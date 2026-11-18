@@ -20,13 +20,15 @@ async function call(method, path, { body, tenant = TENANT, base = BASE_URL } = {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
-  let json = null;
+  return { status: res.status, headers: res.headers, body: parseJson(text) };
+}
+
+function parseJson(text) {
   try {
-    json = text ? JSON.parse(text) : null;
+    return text ? JSON.parse(text) : null;
   } catch {
-    json = text;
+    return text;
   }
-  return { status: res.status, headers: res.headers, body: json };
 }
 
 async function waitFor(description, probe, timeoutMs) {
