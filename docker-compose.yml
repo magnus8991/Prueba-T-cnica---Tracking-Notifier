@@ -1,0 +1,83 @@
+# Entorno LOCAL de desarrollo/demostración: `docker compose up --build`
+#
+# Los valores por defecto (${VAR:-valor}) son credenciales FICTICIAS solo para uso local.
+# Pueden sobreescribirse con un archivo .env (ignorado por git, ver .env.example).
+# En producción (GCP) los secretos vienen de Secret Manager; ver docs/despliegue-gcp.md.
+
+name: tracking-notifier
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tracking_notifier}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only_password}
+      POSTGRES_DB: ${POSTGRES_DB:-tracking_notifier}
+    volumes:
+      # PostgreSQL 18: el volumen se monta en /var/lib/postgresql (PGDATA versionado por major)
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  webhook-receiver:
+    image: node:26-alpine
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    volumes:
+      - ./docker/webhook-receiver:/app:ro
+    environment:
+      PORT: "8080"
+    ports:
+      - "${RECEIVER_PORT:-9090}:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      target: runtime
+    image: tracking-notifier:local
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      APP_ROLE: all
+      RUN_MIGRATIONS_ON_START: "true"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tracking_notifier}:${POSTGRES_PASSWORD:-local_dev_only_password}@db:5432/${POSTGRES_DB:-tracking_notifier}
+      # Clave FICTICIA solo para local (32 bytes base64). En GCP: Secret Manager.
+      WEBHOOK_SECRET_ENCRYPTION_KEY: ${WEBHOOK_SECRET_ENCRYPTION_KEY:-bG9jYWwtZGV2LW9ubHkta2V5LW5vdC1mb3ItcHJvZCE=}
+      # El receptor de prueba vive en la red privada de compose: solo en local se permite.
+      WEBHOOK_ALLOW_PRIVATE_NETWORKS: "true"
+      WEBHOOK_REQUIRE_HTTPS: "false"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      webhook-receiver:
+        condition: service_healthy
+
+  # Todas las pruebas (unit + integración + E2E) dentro de Docker contra PostgreSQL real:
+  #   docker compose --profile test run --rm tests
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      target: test
+    environment:
+      DATABASE_URL_TEST: postgresql://${POSTGRES_USER:-tracking_notifier}:${POSTGRES_PASSWORD:-local_dev_only_password}@db:5432/tracking_notifier_test
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
