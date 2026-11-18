@@ -28,8 +28,10 @@ for (const [network, prefix] of [
   BLOCKED.addSubnet(network, prefix, 'ipv4');
 }
 for (const [network, prefix] of [
-  ['::', 128],
-  ['::1', 128],
+  ['::', 96], // no especificada, loopback e IPv4-compatible (::a.b.c.d, deprecada)
+  ['::ffff:0:0:0', 96], // IPv4-translated (RFC 2765)
+  ['2002::', 16], // 6to4: embebe una IPv4 arbitraria
+  ['2001::', 32], // Teredo
   ['64:ff9b::', 96],
   ['64:ff9b:1::', 48],
   ['100::', 64],

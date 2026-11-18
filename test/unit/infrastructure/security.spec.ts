@@ -51,10 +51,14 @@ describe('Protección SSRF', () => {
     '::ffff:127.0.0.1', // IPv4-mapped: no debe permitir bypass
     '::ffff:169.254.169.254',
     '64:ff9b::a9fe:a9fe', // NAT64
+    '::a9fe:a9fe', // IPv4-compatible (deprecada) → 169.254.169.254
+    '::ffff:0:a9fe:a9fe', // IPv4-translated
+    '2002:a9fe:a9fe::1', // 6to4 que embebe 169.254.169.254
+    '2001:0:4136:e378::1', // Teredo
     'no-es-ip',
   ])('bloquea %s', (ip) => expect(isBlockedAddress(ip)).toBe(true));
 
-  it.each(['8.8.8.8', '34.120.1.1', '172.32.0.1', '2600:1901::1'])('permite IP pública %s', (ip) => expect(isBlockedAddress(ip)).toBe(false));
+  it.each(['8.8.8.8', '34.120.1.1', '172.32.0.1', '2600:1901::1', '2001:4860:4860::8888'])('permite IP pública %s', (ip) => expect(isBlockedAddress(ip)).toBe(false));
 
   describe('política de destinos al configurar', () => {
     const strict = new NetworkWebhookDestinationPolicy({ allowPrivateNetworks: false, requireHttps: true });

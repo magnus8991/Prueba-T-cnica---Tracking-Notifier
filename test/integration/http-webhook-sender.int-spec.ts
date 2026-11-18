@@ -1,4 +1,5 @@
 import { WebhookDelivery } from '../../src/application/ports/webhook-sender';
+import { loadConfig } from '../../src/infrastructure/config/env';
 import { verifyWebhookSignature } from '../../src/infrastructure/webhook/hmac-signer';
 import { HttpWebhookSender } from '../../src/infrastructure/webhook/http-webhook-sender';
 import { FakeWebhookServer } from '../support/fake-webhook-server';
@@ -65,6 +66,15 @@ describe('HttpWebhookSender (HTTP real contra servidor local)', () => {
     expect(result.durationMs).toBeGreaterThanOrEqual(290);
     expect(result.durationMs).toBeLessThan(1_500);
   });
+
+  it('con el timeout REAL del enunciado (5 s por defecto), un webhook que tarda 6 s se corta como TIMEOUT', async () => {
+    const realTimeout = new HttpWebhookSender({ timeoutMs: loadConfig({ DATABASE_URL: 'postgresql://x@y/z', WEBHOOK_SECRET_ENCRYPTION_KEY: Buffer.alloc(32).toString('base64') }).WEBHOOK_TIMEOUT_MS, allowPrivateNetworks: true, userAgent: 'x' });
+    server.responder = () => ({ status: 200, delayMs: 6_000 });
+    const result = await realTimeout.send(delivery());
+    expect(result).toMatchObject({ ok: false, errorCode: 'TIMEOUT' });
+    expect(result.durationMs).toBeGreaterThanOrEqual(4_950);
+    expect(result.durationMs).toBeLessThan(5_900);
+  }, 10_000);
 
   it('conexión rechazada → NETWORK_ERROR', async () => {
     expect(await sender.send(delivery({ url: 'http://127.0.0.1:1/hook' }))).toMatchObject({ ok: false, errorCode: 'NETWORK_ERROR' });
