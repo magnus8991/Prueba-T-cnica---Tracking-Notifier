@@ -10,6 +10,7 @@ import { Logger } from 'pino';
 import { parse as parseYaml } from 'yaml';
 import { AppConfig } from '../config/env';
 import { ProblemDetailsFilter } from '../http/problem-details.filter';
+import { requestIdFrom } from '../observability/logger';
 import { PrometheusMetrics } from '../observability/metrics';
 import { AppModule } from './app.module';
 
@@ -24,7 +25,6 @@ export async function createApp(config: AppConfig, rootLogger: Logger): Promise<
   app.useLogger(app.get(NestPinoLogger));
   app.disable('x-powered-by');
   app.set('trust proxy', true); // detrás del balanceador de Cloud Run / API Gateway
-  app.useBodyParser('json', { limit: BODY_LIMIT, type: ['application/json', 'application/*+json'] });
 
   if (config.CORS_ORIGINS.length > 0) {
     // Para un frontend (p.ej. React) servido desde otro origen; deshabilitado por defecto.
@@ -32,7 +32,15 @@ export async function createApp(config: AppConfig, rootLogger: Logger): Promise<
   }
 
   const metrics = app.get(PrometheusMetrics);
-  app.use((req: Request, res: Response, next: NextFunction) => {
+  // Middleware transversal registrado ANTES del body-parser: así incluso las respuestas de
+  // JSON malformado (400), cuerpo grande (413) y 415 llevan requestId, métricas y log de acceso.
+  app.use((req: Request & { id?: string; log?: unknown }, res: Response, next: NextFunction) => {
+    req.id = requestIdFrom(req);
+    res.setHeader('X-Request-Id', req.id);
+    res.on('finish', () => {
+      if (req.log) return; // pino-http ya registró esta petición
+      rootLogger.info({ req: { id: req.id, method: req.method, path: req.path }, res: { statusCode: res.statusCode } }, 'request completed');
+    });
     // Cabeceras de seguridad para una API JSON
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
@@ -49,6 +57,7 @@ export async function createApp(config: AppConfig, rootLogger: Logger): Promise<
         detail: 'Use Content-Type: application/json',
         instance: req.path,
         code: 'TIPO_CONTENIDO_NO_SOPORTADO',
+        requestId: req.id,
       });
       return;
     }
@@ -59,6 +68,7 @@ export async function createApp(config: AppConfig, rootLogger: Logger): Promise<
     });
     next();
   });
+  app.useBodyParser('json', { limit: BODY_LIMIT, type: ['application/json', 'application/*+json'] });
 
   app.useGlobalFilters(new ProblemDetailsFilter(rootLogger));
   mountApiDocs(app);

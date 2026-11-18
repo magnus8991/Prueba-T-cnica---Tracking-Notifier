@@ -25,7 +25,7 @@ describe('tracking-notifier E2E', () => {
   const event = (overrides: Record<string, unknown> = {}) => ({
     eventId: randomUUID(),
     estado: 'CREADA',
-    fechaEvento: '2026-11-18T08:00:00-05:00',
+    fechaEvento: '2026-11-17T08:00:00-05:00',
     observacion: 'Dato ficticio de prueba',
     ...overrides,
   });
@@ -67,7 +67,7 @@ describe('tracking-notifier E2E', () => {
         eventId: body.eventId,
         numeroGuia: 'GUIA-0001',
         estado: 'CREADA',
-        fechaEvento: '2026-11-18T13:00:00.000Z',
+        fechaEvento: '2026-11-17T13:00:00.000Z',
         observacion: 'Dato ficticio de prueba',
         estadoActualGuia: 'CREADA',
       });
@@ -95,9 +95,9 @@ describe('tracking-notifier E2E', () => {
 
     it.each(['ENTREGADA', 'DEVUELTA'])('una guía %s rechaza nuevos estados con 409 problem+json', async (terminal) => {
       await postEvent('GUIA-0001', event({ estado: 'EN_RUTA' })).expect(201);
-      await postEvent('GUIA-0001', event({ estado: terminal, fechaEvento: '2026-11-18T10:00:00Z' })).expect(201);
+      await postEvent('GUIA-0001', event({ estado: terminal, fechaEvento: '2026-11-17T10:00:00Z' })).expect(201);
 
-      const res = await postEvent('GUIA-0001', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-18T11:00:00Z' })).expect(409);
+      const res = await postEvent('GUIA-0001', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T11:00:00Z' })).expect(409);
       expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
       expect(res.body).toMatchObject({ status: 409, code: 'GUIA_EN_ESTADO_TERMINAL', instance: '/v1/guias/GUIA-0001/eventos' });
       expect(res.body.requestId).toBe(res.headers['x-request-id']);
@@ -117,13 +117,13 @@ describe('tracking-notifier E2E', () => {
 
   describe('Validación y formato único de error (RFC 9457)', () => {
     it.each([
-      ['falta eventId', { estado: 'CREADA', fechaEvento: '2026-11-18T08:00:00Z' }, 'eventId'],
-      ['eventId no UUID', { eventId: 'abc', estado: 'CREADA', fechaEvento: '2026-11-18T08:00:00Z' }, 'eventId'],
-      ['estado desconocido', { eventId: randomUUID(), estado: 'PERDIDA', fechaEvento: '2026-11-18T08:00:00Z' }, 'estado'],
-      ['fecha sin zona horaria', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-18T08:00:00' }, 'fechaEvento'],
+      ['falta eventId', { estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z' }, 'eventId'],
+      ['eventId no UUID', { eventId: 'abc', estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z' }, 'eventId'],
+      ['estado desconocido', { eventId: randomUUID(), estado: 'PERDIDA', fechaEvento: '2026-11-17T08:00:00Z' }, 'estado'],
+      ['fecha sin zona horaria', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00' }, 'fechaEvento'],
       ['fecha inválida', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '18/11/2026' }, 'fechaEvento'],
-      ['observación muy larga', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-18T08:00:00Z', observacion: 'x'.repeat(501) }, 'observacion'],
-      ['campo desconocido', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-18T08:00:00Z', tenant: 'otro' }, '(body)'],
+      ['observación muy larga', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z', observacion: 'x'.repeat(501) }, 'observacion'],
+      ['campo desconocido', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z', tenant: 'otro' }, '(body)'],
     ])('400 VALIDACION_FALLIDA: %s', async (_case, body, path) => {
       const res = await postEvent('GUIA-0001', body).expect(400);
       expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
@@ -134,6 +134,21 @@ describe('tracking-notifier E2E', () => {
     it('400 TENANT_INVALIDO si falta o es inválida la cabecera X-Tenant-Id', async () => {
       expect((await api().post('/v1/guias/GUIA-0001/eventos').send(event()).expect(400)).body.code).toBe('TENANT_INVALIDO');
       expect((await postEvent('GUIA-0001', event(), 'tenant con espacios').expect(400)).body.code).toBe('TENANT_INVALIDO');
+    });
+
+    it('400 FECHA_EVENTO_FUTURA: una fecha del emisor muy en el futuro no congela la guía', async () => {
+      const res = await postEvent('GUIA-0001', event({ fechaEvento: '9999-12-31T00:00:00Z' })).expect(400);
+      expect(res.body.code).toBe('FECHA_EVENTO_FUTURA');
+    });
+
+    it('los errores previos al routing (JSON malformado, 415) también llevan requestId y quedan en el log de acceso', async () => {
+      const malformed = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'application/json').send('{"x":').expect(400);
+      expect(malformed.headers['x-request-id']).toBeDefined();
+      expect(malformed.body.requestId).toBe(malformed.headers['x-request-id']);
+
+      const unsupported = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'text/plain').send('hola').expect(415);
+      expect(unsupported.body.requestId).toBe(unsupported.headers['x-request-id']);
+      expect(logs.text).toContain(unsupported.headers['x-request-id']);
     });
 
     it('400 número de guía inválido', async () => {
@@ -170,17 +185,17 @@ describe('tracking-notifier E2E', () => {
 
   describe('RF2 · Consultar historial', () => {
     it('devuelve estado actual y eventos en orden cronológico (aunque lleguen desordenados)', async () => {
-      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-18T12:00:00Z' })).expect(201);
-      await postEvent('GUIA-0002', event({ estado: 'CREADA', fechaEvento: '2026-11-18T07:00:00Z' })).expect(201);
-      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-18T09:30:00Z' })).expect(201);
+      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T12:00:00Z' })).expect(201);
+      await postEvent('GUIA-0002', event({ estado: 'CREADA', fechaEvento: '2026-11-17T07:00:00Z' })).expect(201);
+      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T09:30:00Z' })).expect(201);
 
       const res = await api().get('/v1/guias/GUIA-0002').set('X-Tenant-Id', TENANT).expect(200);
       expect(res.body.estadoActual).toBe('EN_RUTA');
-      expect(res.body.fechaEstadoActual).toBe('2026-11-18T12:00:00.000Z');
+      expect(res.body.fechaEstadoActual).toBe('2026-11-17T12:00:00.000Z');
       expect(res.body.eventos.map((e: { fechaEvento: string }) => e.fechaEvento)).toEqual([
-        '2026-11-18T07:00:00.000Z',
-        '2026-11-18T09:30:00.000Z',
-        '2026-11-18T12:00:00.000Z',
+        '2026-11-17T07:00:00.000Z',
+        '2026-11-17T09:30:00.000Z',
+        '2026-11-17T12:00:00.000Z',
       ]);
     });
 
@@ -275,6 +290,20 @@ describe('tracking-notifier E2E', () => {
       expect((await api().post(`/v1/notificaciones/${failed!.id}/reintentar`).set('X-Tenant-Id', TENANT).expect(409)).body.code).toBe(
         'NOTIFICACION_NO_REINTENTABLE',
       );
+    });
+
+    it('reintentos manuales concurrentes: solo uno es aceptado (202), el resto 409; se entrega una sola vez', async () => {
+      await postEvent('GUIA-0010', event()).expect(201); // sin webhook → termina FALLIDA
+      const [failed] = await eventually(() => notifications(TENANT, '?estado=FALLIDA'), (items) => items.length === 1);
+      await configureWebhook().expect(201);
+
+      const responses = await Promise.all(
+        Array.from({ length: 5 }, () => api().post(`/v1/notificaciones/${failed!.id}/reintentar`).set('X-Tenant-Id', TENANT)),
+      );
+      expect(responses.map((r) => r.status).sort()).toEqual([202, 409, 409, 409, 409]);
+      await eventually(notifications, (items) => items[0]?.estado === 'ENVIADA');
+      await new Promise((r) => setTimeout(r, 200));
+      expect(webhook.received).toHaveLength(1);
     });
 
     it('webhook que no responde a tiempo → TIMEOUT y reintento; se recupera al segundo intento', async () => {

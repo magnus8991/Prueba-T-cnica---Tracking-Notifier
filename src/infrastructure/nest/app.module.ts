@@ -50,8 +50,9 @@ export class AppModule {
         LoggerModule.forRoot({
           pinoHttp: {
             logger: rootLogger,
+            // Reutiliza el id asignado por el middleware temprano (create-app.ts) para que logs y respuestas coincidan.
             genReqId: (req: IncomingMessage, res: ServerResponse) => {
-              const id = requestIdFrom(req);
+              const id = (req as IncomingMessage & { id?: string }).id ?? requestIdFrom(req);
               res.setHeader('X-Request-Id', id);
               return id;
             },
