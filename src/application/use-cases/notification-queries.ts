@@ -1,4 +1,5 @@
 import { Notification, NotificationStatus } from '../../domain/notification/notification';
+import { DomainError } from '../../domain/shared/domain-error';
 import { TenantId } from '../../domain/tenant/tenant-id';
 import { NotFoundError } from '../errors';
 import { NotificationAttempt, NotificationRepository } from '../ports/repositories';
@@ -42,8 +43,11 @@ export class RetryNotification {
     if (!notification) {
       throw new NotFoundError('Notificación');
     }
-    notification.requeue(this.clock.now());
-    await this.notifications.save(notification);
+    notification.requeue(this.clock.now()); // lanza si no está FALLIDA según la lectura
+    // Reintentos concurrentes o lecturas obsoletas: solo gana quien la encuentre aún FALLIDA en la BD.
+    if (!(await this.notifications.saveIfStatus(notification, 'FALLIDA'))) {
+      throw new DomainError('NOTIFICACION_NO_REINTENTABLE', 'La notificación cambió de estado y ya no es reintentable');
+    }
     this.workSignal.notify();
     return notification;
   }

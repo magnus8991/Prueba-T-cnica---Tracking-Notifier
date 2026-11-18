@@ -5,6 +5,8 @@ import { ShipmentStatus } from './shipment-status';
 import { TrackingNumber } from './tracking-number';
 
 export const MAX_OBSERVATION_LENGTH = 500;
+/** Tolerancia de desfase de reloj del emisor. Una fecha más allá "congelaría" el estado actual de la guía. */
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 export interface TrackingEventProps {
   tenantId: TenantId;
@@ -23,6 +25,9 @@ export class TrackingEvent {
   static create(props: TrackingEventProps): TrackingEvent {
     if (!(props.occurredAt instanceof Date) || Number.isNaN(props.occurredAt.getTime())) {
       throw new DomainError('FECHA_EVENTO_INVALIDA', 'fechaEvento debe ser una fecha ISO 8601 válida');
+    }
+    if (props.occurredAt.getTime() > props.receivedAt.getTime() + MAX_FUTURE_SKEW_MS) {
+      throw new DomainError('FECHA_EVENTO_FUTURA', 'fechaEvento no puede estar en el futuro (tolerancia de 5 minutos)');
     }
     const observation = props.observation === null ? null : props.observation.trim();
     if (observation !== null && observation.length > MAX_OBSERVATION_LENGTH) {

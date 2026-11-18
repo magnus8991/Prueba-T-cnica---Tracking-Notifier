@@ -107,15 +107,16 @@ export class PgNotificationRepository implements NotificationRepository {
     return rowCount === 1;
   }
 
-  async save(notification: Notification): Promise<void> {
+  async saveIfStatus(notification: Notification, expectedStatus: NotificationStatus): Promise<boolean> {
     const n = notification.snapshot();
-    await this.db.query(
+    const { rowCount } = await this.db.query(
       `UPDATE notifications
-          SET status = $3, attempts = $4, next_attempt_at = $5, locked_until = $6, last_error = $7,
-              last_http_status = $8, delivered_at = $9, failed_at = $10, updated_at = $11
-        WHERE id = $1 AND tenant_id = $2`,
-      [n.id, n.tenantId.value, n.status, n.attempts, n.nextAttemptAt, n.lockedUntil, n.lastError, n.lastHttpStatus, n.deliveredAt, n.failedAt, n.updatedAt],
+          SET status = $4, attempts = $5, next_attempt_at = $6, locked_until = $7, last_error = $8,
+              last_http_status = $9, delivered_at = $10, failed_at = $11, updated_at = $12
+        WHERE id = $1 AND tenant_id = $2 AND status = $3`,
+      [n.id, n.tenantId.value, expectedStatus, n.status, n.attempts, n.nextAttemptAt, n.lockedUntil, n.lastError, n.lastHttpStatus, n.deliveredAt, n.failedAt, n.updatedAt],
     );
+    return rowCount === 1;
   }
 
   /**
@@ -125,9 +126,15 @@ export class PgNotificationRepository implements NotificationRepository {
    */
   async claimDue(now: Date, limit: number, leaseMs: number): Promise<Notification[]> {
     await this.db.query(
-      `UPDATE notifications
-          SET status = 'FALLIDA', locked_until = NULL, last_error = 'LEASE_EXPIRADO', failed_at = $1, updated_at = $1
-        WHERE status = 'ENVIANDO' AND locked_until < $1 AND attempts >= max_attempts`,
+      `WITH abandoned AS (
+         UPDATE notifications
+            SET status = 'FALLIDA', locked_until = NULL, last_error = 'LEASE_EXPIRADO', last_http_status = NULL,
+                failed_at = $1, updated_at = $1
+          WHERE status = 'ENVIANDO' AND locked_until < $1 AND attempts >= max_attempts
+         RETURNING id, attempts
+       )
+       INSERT INTO notification_attempts (notification_id, attempt_number, attempted_at, duration_ms, http_status, error_code)
+       SELECT id, attempts, $1, 0, NULL, 'LEASE_EXPIRADO' FROM abandoned`,
       [now],
     );
     const { rows } = await this.db.query<NotificationRow>(

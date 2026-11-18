@@ -103,7 +103,7 @@ describe('Notification (outbox + reintentos)', () => {
       n.recordFailure(at(10 ** 8 * i), failure, policy);
     }
     n.requeue(at(10 ** 9));
-    expect(n.snapshot()).toMatchObject({ status: 'PENDIENTE', attempts: 0, failedAt: null, nextAttemptAt: at(10 ** 9) });
+    expect(n.snapshot()).toMatchObject({ status: 'PENDIENTE', attempts: 0, failedAt: null, nextAttemptAt: at(10 ** 9), lastError: null, lastHttpStatus: null });
   });
 
   it('solo FALLIDA es reencolable', () => {

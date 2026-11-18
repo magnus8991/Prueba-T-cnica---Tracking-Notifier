@@ -30,6 +30,6 @@ export function anEvent(overrides: Partial<{
     status: overrides.status ?? 'CREADA',
     occurredAt: new Date(overrides.occurredAt ?? '2026-11-01T10:00:00Z'),
     observation: overrides.observation ?? null,
-    receivedAt: new Date('2026-11-01T10:00:01Z'),
+    receivedAt: new Date('2026-12-01T00:00:00Z'),
   });
 }

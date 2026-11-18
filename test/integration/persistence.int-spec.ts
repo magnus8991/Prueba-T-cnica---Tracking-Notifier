@@ -9,7 +9,8 @@ import { TenantId } from '../../src/domain/tenant/tenant-id';
 import { WebhookSubscription } from '../../src/domain/webhook/webhook-subscription';
 import { WebhookUrl } from '../../src/domain/webhook/webhook-url';
 import { AesGcmSecretCipher } from '../../src/infrastructure/crypto/aes-gcm-secret-cipher';
-import { CryptoIdGenerator } from '../../src/infrastructure/crypto/system-adapters';
+import { CryptoIdGenerator, RandomSecretGenerator } from '../../src/infrastructure/crypto/system-adapters';
+import { ConfigureWebhook } from '../../src/application/use-cases/configure-webhook';
 import { runMigrations } from '../../src/infrastructure/persistence/migrator';
 import { PgTransactionRunner } from '../../src/infrastructure/persistence/pg-transaction-runner';
 import { PgNotificationRepository } from '../../src/infrastructure/persistence/repositories/pg-notification-repository';
@@ -168,6 +169,30 @@ describe('Persistencia PostgreSQL (integración real)', () => {
 
       const [failed] = await notifications().list(TenantId.create('tenant-a'), { status: 'FALLIDA', limit: 10 });
       expect(failed!.snapshot()).toMatchObject({ attempts: 5, lastError: 'LEASE_EXPIRADO' });
+      // El abandono deja rastro en el historial de intentos (D-5 de la auditoría QA)
+      const history = await notifications().listAttempts(TenantId.create('tenant-a'), failed!.id);
+      expect(history).toEqual([expect.objectContaining({ attemptNumber: 5, errorCode: 'LEASE_EXPIRADO' })]);
+    });
+
+    it('un reintento manual con lectura obsoleta NO pisa una notificación ya ENVIADA (concurrencia optimista)', async () => {
+      const policy = new ExponentialBackoffPolicy({ maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0 });
+      await new RegisterTrackingEvent(new PgTransactionRunner(pool), clock, new CryptoIdGenerator(), new SpyWorkSignal(), 1).execute(cmd());
+      const [n] = await notifications().claimDue(clock.now(), 10, LEASE);
+      n!.recordFailure(clock.now(), { errorCode: 'HTTP_ERROR', httpStatus: 500 }, policy);
+      await notifications().saveAttemptResult(n!, 1); // FALLIDA
+
+      const tenant = TenantId.create('tenant-a');
+      const readA = (await notifications().findById(tenant, n!.id))!;
+      const readB = (await notifications().findById(tenant, n!.id))!; // lectura que quedará obsoleta
+      readA.requeue(clock.now());
+      expect(await notifications().saveIfStatus(readA, 'FALLIDA')).toBe(true);
+      const [claimed] = await notifications().claimDue(clock.now(), 10, LEASE);
+      claimed!.recordSuccess(clock.now(), 200);
+      await notifications().saveAttemptResult(claimed!, 1); // ENVIADA
+
+      readB.requeue(clock.now());
+      expect(await notifications().saveIfStatus(readB, 'FALLIDA')).toBe(false);
+      expect((await notifications().findById(tenant, n!.id))!.snapshot()).toMatchObject({ status: 'ENVIADA', attempts: 1 });
     });
 
     it('guarda y lista el historial de intentos', async () => {
@@ -190,6 +215,18 @@ describe('Persistencia PostgreSQL (integración real)', () => {
       const { rows } = await pool.query('SELECT secret_ciphertext FROM webhook_subscriptions');
       expect(rows[0].secret_ciphertext).not.toContain('supersecreto');
       expect((await repo.find(tenantId))!.secret).toBe('whsec_supersecreto');
+    });
+
+    it('primer PUT concurrente: solo una creación gana y revela secreto; el secreto revelado es el persistido', async () => {
+      const repo = new PgWebhookSubscriptionRepository(pool, new AesGcmSecretCipher(TEST_ENCRYPTION_KEY));
+      const configure = new ConfigureWebhook(repo, { assertAllowed: async () => undefined }, new RandomSecretGenerator(), clock);
+      const results = await Promise.all(
+        Array.from({ length: 8 }, () => configure.execute({ tenantId: 'tenant-a', url: 'https://cliente.example.com/h', rotateSecret: false })),
+      );
+      const created = results.filter((r) => r.created);
+      expect(created).toHaveLength(1);
+      expect(results.filter((r) => r.revealedSecret !== null)).toHaveLength(1);
+      expect((await repo.find(TenantId.create('tenant-a')))!.secret).toBe(created[0]!.revealedSecret);
     });
   });
 });

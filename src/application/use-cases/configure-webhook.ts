@@ -28,12 +28,15 @@ export class ConfigureWebhook {
     await this.destinationPolicy.assertAllowed(new URL(url.value));
     const now = this.clock.now();
 
-    const existing = await this.subscriptions.find(tenantId);
+    let existing = await this.subscriptions.find(tenantId);
     if (!existing) {
       const secret = this.secrets.generate();
       const subscription = WebhookSubscription.create({ tenantId, url, secret, now });
-      await this.subscriptions.save(subscription);
-      return { subscription, created: true, revealedSecret: secret };
+      // Atómico: si dos PUT concurrentes crean a la vez, solo uno revela secreto (el otro actualiza).
+      if (await this.subscriptions.insertIfAbsent(subscription)) {
+        return { subscription, created: true, revealedSecret: secret };
+      }
+      existing = (await this.subscriptions.find(tenantId))!;
     }
 
     existing.changeUrl(url, now);

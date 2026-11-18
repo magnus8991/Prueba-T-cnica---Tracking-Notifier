@@ -33,6 +33,14 @@ describe('TrackingEvent', () => {
     expect(captureError(() => anEvent({ observation: 'x'.repeat(501) })).code).toBe('OBSERVACION_INVALIDA');
   });
 
+  it('rechaza fechaEvento en el futuro más allá de 5 minutos de tolerancia (congelaría el estado actual)', () => {
+    const base = { tenantId: TENANT_A, eventId: EventId.create(ID), trackingNumber: GUIA_1, status: 'EN_RUTA' as const, observation: null };
+    const receivedAt = new Date('2026-11-18T10:00:00Z');
+    expect(() => TrackingEvent.create({ ...base, receivedAt, occurredAt: new Date('2026-11-18T10:04:59Z') })).not.toThrow();
+    const error = captureError(() => TrackingEvent.create({ ...base, receivedAt, occurredAt: new Date('9999-12-31T00:00:00Z') }));
+    expect(error.code).toBe('FECHA_EVENTO_FUTURA');
+  });
+
   it('rechaza fechas inválidas', () => {
     const error = captureError(() =>
       TrackingEvent.create({

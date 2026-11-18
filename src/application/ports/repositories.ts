@@ -44,8 +44,11 @@ export interface NotificationRepository {
    * reclamó (protección ante un lease vencido y re-reclamado). Devuelve false si se descartó.
    */
   saveAttemptResult(notification: Notification, expectedAttempts: number): Promise<boolean>;
-  /** Persiste un cambio administrativo (p.ej. requeue). */
-  save(notification: Notification): Promise<void>;
+  /**
+   * Persiste un cambio administrativo (p.ej. requeue) solo si la fila sigue en `expectedStatus`
+   * (concurrencia optimista: una lectura obsoleta no puede pisar un estado más nuevo). Devuelve false si no aplicó.
+   */
+  saveIfStatus(notification: Notification, expectedStatus: NotificationStatus): Promise<boolean>;
   /**
    * Reclama atómicamente hasta `limit` notificaciones vencidas (cross-tenant: uso exclusivo
    * del worker), las marca ENVIANDO con un lease y cuenta el intento.
@@ -57,5 +60,7 @@ export interface NotificationRepository {
 
 export interface WebhookSubscriptionRepository {
   find(tenantId: TenantId): Promise<WebhookSubscription | null>;
+  /** Crea la suscripción solo si el tenant no tiene una (atómico). Devuelve false si otra petición la creó antes. */
+  insertIfAbsent(subscription: WebhookSubscription): Promise<boolean>;
   save(subscription: WebhookSubscription): Promise<void>;
 }

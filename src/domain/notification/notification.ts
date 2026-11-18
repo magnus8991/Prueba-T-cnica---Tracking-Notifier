@@ -156,6 +156,8 @@ export class Notification {
       attempts: 0,
       nextAttemptAt: now,
       failedAt: null,
+      lastError: null,
+      lastHttpStatus: null,
       updatedAt: now,
     };
   }

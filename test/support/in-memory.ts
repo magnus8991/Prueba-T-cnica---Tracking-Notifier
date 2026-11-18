@@ -100,8 +100,11 @@ class InMemoryNotifications implements NotificationRepository {
     this.state().notifications.set(n.id, n.snapshot());
     return true;
   }
-  async save(n: Notification) {
+  async saveIfStatus(n: Notification, expectedStatus: string) {
+    const current = this.state().notifications.get(n.id);
+    if (!current || !current.tenantId.equals(n.tenantId) || current.status !== expectedStatus) return false;
     this.state().notifications.set(n.id, n.snapshot());
+    return true;
   }
   async claimDue(now: Date, limit: number, leaseMs: number) {
     for (const p of this.state().notifications.values()) {
@@ -109,6 +112,7 @@ class InMemoryNotifications implements NotificationRepository {
       if (n.isAbandonedAfterLastAttempt(now)) {
         n.abandon(now);
         this.state().notifications.set(n.id, n.snapshot());
+        this.state().attempts.push({ notificationId: n.id, attemptNumber: n.attempts, attemptedAt: now, durationMs: 0, httpStatus: null, errorCode: 'LEASE_EXPIRADO' });
       }
     }
     const due = [...this.state().notifications.values()]
@@ -168,13 +172,18 @@ export class InMemorySubscriptions implements WebhookSubscriptionRepository {
   async find(tenantId: TenantId) {
     return this.items.get(tenantId.value) ?? null;
   }
+  async insertIfAbsent(subscription: WebhookSubscription) {
+    if (this.items.has(subscription.tenantId.value)) return false;
+    this.items.set(subscription.tenantId.value, subscription);
+    return true;
+  }
   async save(subscription: WebhookSubscription) {
     this.items.set(subscription.tenantId.value, subscription);
   }
 }
 
 export class FixedClock implements Clock {
-  constructor(private current: Date = new Date('2026-11-01T10:00:00Z')) {}
+  constructor(private current: Date = new Date('2026-12-01T00:00:00Z')) {}
   now() {
     return new Date(this.current);
   }

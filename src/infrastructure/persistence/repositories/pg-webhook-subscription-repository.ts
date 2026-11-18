@@ -37,6 +37,22 @@ export class PgWebhookSubscriptionRepository implements WebhookSubscriptionRepos
       : null;
   }
 
+  async insertIfAbsent(subscription: WebhookSubscription): Promise<boolean> {
+    const { rowCount } = await this.db.query(
+      `INSERT INTO webhook_subscriptions (tenant_id, url, secret_ciphertext, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (tenant_id) DO NOTHING`,
+      [
+        subscription.tenantId.value,
+        subscription.url.value,
+        this.cipher.encrypt(subscription.secret, subscription.tenantId.value),
+        subscription.createdAt,
+        subscription.updatedAt,
+      ],
+    );
+    return rowCount === 1;
+  }
+
   async save(subscription: WebhookSubscription): Promise<void> {
     await this.db.query(
       `INSERT INTO webhook_subscriptions (tenant_id, url, secret_ciphertext, created_at, updated_at)
