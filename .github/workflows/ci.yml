@@ -78,7 +78,11 @@ jobs:
           if grep -q "whsec_" app.log; then echo "Se encontró un secreto en logs"; exit 1; fi
       - name: Logs ante fallo
         if: failure()
-        run: docker compose logs
+        run: |
+          docker compose ps
+          docker compose logs
+          # Últimos errores del servicio como anotaciones (sin datos sensibles: los logs ya vienen redactados)
+          docker compose logs --no-color app | grep -E '"severity":"(ERROR|WARNING|CRITICAL)"' | tail -n 5 | sed 's/^/::warning title=app log::/' || true
       - name: Bajar el stack
         if: always()
         run: docker compose down -v

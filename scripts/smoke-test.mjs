@@ -151,5 +151,9 @@ await step('Operación: métricas Prometheus y OpenAPI', async () => {
 
 console.table(results);
 const failed = results.filter((r) => r.resultado === 'FAIL');
+if (process.env.GITHUB_ACTIONS === 'true') {
+  // Anotaciones visibles en la página del run de GitHub Actions.
+  for (const f of failed) console.log(`::error title=Smoke - ${f.paso}::${String(f.detalle).replace(/\r?\n/g, ' ')}`);
+}
 console.log(failed.length === 0 ? `\nSMOKE OK (${results.length} pasos, tenant ${TENANT})` : `\nSMOKE FALLÓ: ${failed.length} de ${results.length} pasos`);
 process.exit(failed.length === 0 ? 0 : 1);
