@@ -22,26 +22,28 @@ Decisión arquitectónica central (ADR-001): **Transactional Outbox sobre Postgr
 | Elemento | Estado inicial | Acción |
 |---|---|---|
 | Carpeta del proyecto | Vacía, sin repositorio git | Crear el proyecto desde cero e inicializar git |
-| Node.js | v22.14.0 instalado | **Stack elegido: NestJS + TypeScript** |
+| Node.js | v22.14.0 instalado → actualizado a 26.13.1 LTS | **Stack elegido: NestJS + TypeScript** |
 | Python | No instalado | Se descarta FastAPI |
-| PostgreSQL | Servicio local `postgresql-x64-17` corriendo | Se usa para las pruebas de integración y E2E locales |
-| Docker | **No instalado** en la máquina | Se entregan `Dockerfile` y `docker-compose.yml`; no se pueden ejecutar aquí, así que se validan en el CI (GitHub Actions). Se recomienda instalar Docker Desktop para probar `docker compose up` |
+| PostgreSQL | 17.4 local → reemplazado por 18.7 | Se usa para las pruebas de integración y E2E locales |
+| Docker | No instalado → se instala Docker Desktop 4.99 | `docker compose up` local, y también en el CI |
 | Requisitos funcionales (RF1–RF4) | Definidos en el PDF | Se implementan todos |
 | Requisitos técnicos | Definidos en el PDF | Se implementan todos |
 | Opcionales (HMAC, OpenAPI, métricas, CI) | Definidos en el PDF | **Se implementan los 4** (HMAC con Standard Webhooks, OpenAPI 3.1, Prometheus, GitHub Actions) |
 
-### 2.1 Versiones verificadas (registro npm oficial, ≥ 2 semanas de publicadas)
+### 2.1 Versiones (las estables más recientes, verificadas en nodejs.org, postgresql.org y el registro npm)
+
+Herramientas del equipo actualizadas: Node.js 22.14 → **26.13.1 LTS**, npm → **12.2.3**, Git 2.48 → **2.56.0**, PostgreSQL 17.4 → **18.7**, Docker Desktop **4.99** (instalación nueva). Las imágenes Docker usan `node:26-alpine` y `postgres:18-alpine`.
 
 | Paquete | Versión | Nota |
 |---|---|---|
-| `@nestjs/*` | 12.3.2 | 12.4/12.5 tienen menos de 2 semanas; se usa la última estable madura |
-| `typescript` | 5.9.3 | TS 7 (port nativo) no es soportado aún por `ts-jest` (`<7`) ni `typescript-eslint` (`<6.1`) |
+| `@nestjs/*` | 12.5.1 | Última estable |
+| `typescript` | 6.0.3 | Última versión compatible con el toolchain: TS 7.0 (port nativo) **no** es soportado aún por `ts-jest` (`<7`) ni por `typescript-eslint` (`<6.1`) |
 | `pg` (node-postgres) | 8.23.1 | SQL explícito, sin ORM: el dominio no conoce la persistencia |
 | `zod` | 4.6.7 | Validación de entradas HTTP y de variables de entorno |
-| `nestjs-pino` / `pino` | 5.3.1 / 10.4.0 | Logs JSON estructurados con redacción |
+| `nestjs-pino` / `pino` | 5.3.2 / 10.4.0 | Logs JSON estructurados con redacción |
 | `prom-client` | 15.1.3 | Métricas Prometheus |
-| `jest` / `ts-jest` / `supertest` | 30.5.2 / 29.4.15 / 7.3.1 | Unitarias, integración y E2E |
-| `eslint` / `typescript-eslint` | 9.39.5 / 8.72.1 | Incluye reglas de fronteras arquitectónicas |
+| `jest` / `ts-jest` / `supertest` | 30.5.2 / 29.4.15 / 7.3.2 | Unitarias, integración y E2E |
+| `eslint` / `typescript-eslint` | 10.15.0 / 8.73.0 | Incluye reglas de fronteras arquitectónicas |
 
 ### 2.2 Referencias oficiales consultadas
 
@@ -75,7 +77,25 @@ Decisión arquitectónica central (ADR-001): **Transactional Outbox sobre Postgr
 
 ---
 
-## 4. Arquitectura
+## 4. Arquitectura: microservicio con arquitectura hexagonal
+
+La solución combina dos niveles de diseño:
+
+- **Macro, el microservicio:** `tracking-notifier` es una unidad desplegable independiente con un único *bounded context* (seguimiento de guías y notificación a clientes).
+- **Micro, la arquitectura hexagonal:** organiza el interior del servicio en dominio, aplicación e infraestructura.
+
+### 4.0 Características de microservicio que se aplican
+
+| Característica | Implementación |
+|---|---|
+| Responsabilidad única / bounded context | Solo gestiona eventos de guías, su historial y la entrega a webhooks. No autentica (lo hace el API Gateway) ni crea guías de negocio |
+| Base de datos propia (*database per service*) | Esquema PostgreSQL exclusivo; ningún otro servicio accede a sus tablas, solo a su API |
+| Contrato explícito | API REST versionada (`/v1`) documentada en OpenAPI 3.1, contrato de webhook versionado (`type`, firma `v1`) y errores RFC 9457 |
+| Despliegue independiente | Imagen Docker propia, migraciones versionadas que se ejecutan al desplegar y configuración 12-factor por variables de entorno |
+| Sin estado (*stateless*) y escalable horizontalmente | Ningún estado en memoria que importe. Varias réplicas pueden despachar notificaciones a la vez gracias a `SKIP LOCKED` y al *lease* |
+| Comunicación asíncrona y resiliente | Outbox, reintentos con backoff, timeouts y entrega *at-least-once* idempotente (`webhook-id`) |
+| Observabilidad | Logs JSON con `requestId` de correlación (propaga `X-Request-Id`), métricas Prometheus y *health checks* `live`/`ready` para el orquestador |
+| Integración con plataforma | Confía en el API Gateway para la autenticación (`X-Tenant-Id`), apagado ordenado (SIGTERM: deja de reclamar trabajo y termina los envíos en curso) |
 
 ### 4.1 Hexagonal (puertos y adaptadores)
 
@@ -238,8 +258,7 @@ CREATE TABLE tracking_events (
   tracking_number    text NOT NULL,
   status             text NOT NULL CHECK (status IN ('CREADA','EN_RUTA','ENTREGADA','DEVUELTA')),
   occurred_at        timestamptz NOT NULL,
-  observation        text NULL,
-  payload_hash       char(64) NOT NULL,        -- SHA-256 del contenido canónico (idempotencia)
+  observation        text NULL,                -- la idempotencia compara guía, estado, fecha y observación
   received_seq       bigint GENERATED ALWAYS AS IDENTITY,   -- desempate por orden de llegada
   received_at        timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id, event_id),           -- idempotencia a nivel BD
@@ -380,15 +399,18 @@ Comandos:
 
 ## 11. Plan de ejecución (commits que cuentan la historia)
 
-1. `chore: scaffold NestJS + TypeScript, lint, jest, configuración`
-2. `feat(domain): shipment aggregate, estados y regla terminal + unit tests`
-3. `feat(domain): notification lifecycle y retry policy + unit tests`
-4. `feat(app): casos de uso y puertos + tests con fakes`
-5. `feat(infra): migraciones y repositorios PostgreSQL + integration tests`
-6. `feat(infra): API HTTP, validación, problem details, tenant header`
-7. `feat(infra): worker outbox, sender HTTP con HMAC, guardia SSRF`
-8. `feat(obs): logs pino con redacción, métricas, health`
-9. `test(e2e): flujo completo con webhook falso`
-10. `build: Dockerfile, docker compose, webhook receiver, smoke test`
-11. `ci: GitHub Actions`
-12. `docs: README, ADR-001, OpenAPI`
+Convención: `<tipo>: <VERBO> <qué>`, sin líneas de autoría. Por ejemplo `feat: ADD …`, `refactor: MODIFY …`, `fix: REPAIR …`, `test: ADD …`, `docs: ADD …`, `build: ADD …`, `ci: ADD …`.
+
+1. `docs: ADD informe de implementacion, skill y agente QA`
+2. `build: ADD proyecto base NestJS TypeScript con lint y jest`
+3. `feat: ADD dominio de guias con regla de estados terminales`
+4. `feat: ADD dominio de notificaciones y politica de reintentos`
+5. `feat: ADD casos de uso y puertos de aplicacion`
+6. `feat: ADD persistencia PostgreSQL con migraciones y repositorios`
+7. `feat: ADD API HTTP con validacion y problem details`
+8. `feat: ADD worker outbox con envio HMAC y proteccion SSRF`
+9. `feat: ADD logs estructurados, metricas y health checks`
+10. `test: ADD pruebas de integracion y end to end`
+11. `build: ADD docker compose con webhook de prueba y smoke test`
+12. `ci: ADD pipeline de GitHub Actions`
+13. `docs: ADD README, ADR-001 y OpenAPI`

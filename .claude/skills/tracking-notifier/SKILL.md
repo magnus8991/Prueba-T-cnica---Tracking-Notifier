@@ -21,7 +21,16 @@ Documentos de referencia obligatorios:
 5. La notificación se escribe en la **misma transacción** que el evento (outbox). La respuesta HTTP nunca espera al webhook.
 6. Entrega: timeout de 5 s, hasta 5 intentos en total, backoff exponencial creciente con jitter acotado y luego `FALLIDA` (consultable y reintentable).
 
-## 2. Reglas de arquitectura (hexagonal)
+## 2. Reglas de arquitectura: microservicio + hexagonal
+
+**Nivel microservicio** (no romper):
+- Un solo bounded context (eventos de guías y notificación). Nada de lógica de otros dominios.
+- Base de datos propia: ningún otro servicio accede a sus tablas, solo a la API `/v1` (OpenAPI) y al contrato del webhook.
+- Sin estado y escalable horizontalmente: no se guarda estado de negocio en memoria; el worker es seguro con N réplicas (`SKIP LOCKED` + lease).
+- Configuración 12-factor por variables de entorno, health `live`/`ready`, métricas `/metrics`, logs JSON con `requestId` y apagado ordenado ante SIGTERM.
+- Los cambios de contrato son retrocompatibles o van en una versión nueva (`/v2`, firma `v2`).
+
+**Nivel interno (hexagonal):**
 
 - `src/domain`: TypeScript puro, sin imports de `@nestjs/*`, `pg`, `zod`, `pino`, `node:*` ni `infrastructure`/`application`.
 - `src/application`: casos de uso y puertos. Solo importa `domain`. Sin decoradores ni framework.
@@ -73,5 +82,12 @@ Principios: se prueba **comportamiento y riesgo**, no líneas. Cada prueba indic
 7. Actualizar README, OpenAPI y ADR si cambiaron decisiones
 
 Si algún paso falla, se corrige la causa raíz (sin saltarse pruebas ni hooks) y se repite el flujo completo. El resultado se reporta con la salida real de los comandos.
+
+## 6. Commits (requisito del PDF: historia de commits que cuenta la evolución)
+
+- Un commit por incremento funcional coherente, nunca un único commit al final.
+- Formato: `<tipo>: <VERBO EN MAYÚSCULA> <qué>`, por ejemplo `feat: ADD modulo de notificaciones`, `refactor: MODIFY politica de reintentos`, `fix: REPAIR orden del historial`, `test: ADD …`, `docs: ADD …`, `build: ADD …`, `ci: ADD …`.
+- **Sin** `Co-Authored-By` ni ninguna marca de autoría de herramientas de IA.
+- Solo se hace commit con las pruebas del alcance en verde.
 
 Para la verificación completa de calidad delega en el agente `qa-verifier` (`.claude/agents/qa-verifier.md`).
