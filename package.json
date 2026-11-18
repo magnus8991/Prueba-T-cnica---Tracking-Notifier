@@ -1,0 +1,28 @@
+{
+  "name": "tracking-notifier",
+  "version": "1.0.0",
+  "description": "Microservicio multi-tenant que registra eventos de estado de guías y notifica a webhooks de clientes (outbox + reintentos).",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "tsx watch src/main.ts",
+    "migrate": "node dist/infrastructure/persistence/migrate.js",
+    "migrate:dev": "tsx src/infrastructure/persistence/migrate.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --write .",
+    "test": "jest --runInBand",
+    "test:unit": "jest --selectProjects unit architecture",
+    "test:integration": "jest --selectProjects integration --runInBand",
+    "test:e2e": "jest --selectProjects e2e --runInBand",
+    "test:cov": "jest --runInBand --coverage",
+    "test:smoke": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
