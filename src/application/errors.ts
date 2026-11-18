@@ -12,7 +12,8 @@ export class ApplicationError extends Error {
 }
 
 export class NotFoundError extends ApplicationError {
-  constructor(resource: string) {
-    super('RECURSO_NO_ENCONTRADO', `${resource} no encontrado`);
+  /** @param detail mensaje completo para el cliente (p.ej. "Guía no encontrada"), con concordancia de género. */
+  constructor(detail: string) {
+    super('RECURSO_NO_ENCONTRADO', detail);
   }
 }

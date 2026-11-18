@@ -23,7 +23,7 @@ export class GetNotification {
     const tenantId = TenantId.create(query.tenantId);
     const notification = await this.notifications.findById(tenantId, query.id);
     if (!notification) {
-      throw new NotFoundError('Notificación');
+      throw new NotFoundError('Notificación no encontrada');
     }
     const attempts = await this.notifications.listAttempts(tenantId, notification.id);
     return { notification, attempts };
@@ -41,7 +41,7 @@ export class RetryNotification {
   async execute(command: { tenantId: string; id: string }): Promise<Notification> {
     const notification = await this.notifications.findById(TenantId.create(command.tenantId), command.id);
     if (!notification) {
-      throw new NotFoundError('Notificación');
+      throw new NotFoundError('Notificación no encontrada');
     }
     notification.requeue(this.clock.now()); // lanza si no está FALLIDA según la lectura
     // Reintentos concurrentes o lecturas obsoletas: solo gana quien la encuentre aún FALLIDA en la BD.

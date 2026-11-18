@@ -22,7 +22,7 @@ export class GetShipmentHistory {
     const trackingNumber = TrackingNumber.create(query.trackingNumber);
     const shipment = await this.shipments.find(tenantId, trackingNumber);
     if (!shipment) {
-      throw new NotFoundError('Guía');
+      throw new NotFoundError('Guía no encontrada');
     }
     const events = await this.events.listByShipment(tenantId, trackingNumber);
     return { shipment: shipment.snapshot(), events };

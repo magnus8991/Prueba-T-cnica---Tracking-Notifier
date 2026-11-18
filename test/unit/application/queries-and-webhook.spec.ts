@@ -39,6 +39,7 @@ describe('Consultas y configuración', () => {
         new GetShipmentHistory(db.shipments, db.events).execute({ tenantId: 'tenant-b', trackingNumber: 'GUIA-0001' }),
       );
       expect(error).toBeInstanceOf(NotFoundError);
+      expect(error.message).toBe('Guía no encontrada');
     });
   });
 

@@ -56,7 +56,7 @@ export class GetWebhook {
   async execute(query: { tenantId: string }): Promise<WebhookSubscription> {
     const subscription = await this.subscriptions.find(TenantId.create(query.tenantId));
     if (!subscription) {
-      throw new NotFoundError('Webhook');
+      throw new NotFoundError('El tenant no tiene webhook configurado');
     }
     return subscription;
   }
