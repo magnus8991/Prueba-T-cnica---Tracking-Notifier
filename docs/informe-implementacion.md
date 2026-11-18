@@ -73,7 +73,9 @@ Herramientas del equipo actualizadas: Node.js 22.14 → **26.13.1 LTS**, npm →
 | D11 | Cabecera `X-Tenant-Id` ausente o inválida | 400 `TENANT_INVALIDO`. Formato `^[A-Za-z0-9_-]{1,64}$` |
 | D12 | Guía de otro tenant | Responde 404, sin distinguir entre "no existe" y "es de otro tenant", para no filtrar su existencia |
 | D13 | Garantía de entrega | *At-least-once*. El receptor deduplica con `webhook-id` (que es el `eventId`) |
-| D14 | Datos personales | `observacion` puede contener PII, así que **nunca se registra en logs**. Del webhook solo se registra el host, nunca la ruta ni la query |
+| D14 | Datos personales | `observacion` puede contener PII, así que **nunca se registra en logs**. Tampoco se registra la URL del webhook ni el secreto |
+| D15 | `fechaEvento` en el futuro | Se rechaza (400 `FECHA_EVENTO_FUTURA`) si supera la hora de recepción en más de 5 minutos. Sin esta regla, un reloj del emisor desfasado (por ejemplo, año 9999) congelaría el estado actual de la guía |
+| D16 | Operaciones concurrentes de soporte | El reintento manual usa escritura condicional (`WHERE status='FALLIDA'`): de N reintentos simultáneos solo uno responde 202 y los demás 409. El primer `PUT /webhook` usa `INSERT … ON CONFLICT DO NOTHING`: solo una petición crea y revela el secreto |
 
 ---
 
@@ -142,12 +144,13 @@ Reglas de dependencia, verificadas por ESLint y por una prueba de arquitectura:
 ```
 POST /v1/guias/G-1/eventos ──▶ validar (zod) ──▶ RegisterTrackingEvent
   BEGIN
-    INSERT shipment ON CONFLICT DO NOTHING
-    SELECT shipment FOR UPDATE              -- serializa eventos concurrentes de la misma guía
-    SELECT event (tenant,eventId)           -- ¿idempotente? → mismo hash: 200 · distinto: 409
+    pg_advisory_xact_lock(event:tenant:eventId)      -- orden fijo evento → guía (sin deadlocks)
+    pg_advisory_xact_lock(shipment:tenant:guía)      -- serializa eventos concurrentes de la guía (incluso si aún no existe)
+    SELECT event (tenant,eventId)           -- ¿repetido? → mismo contenido (campo a campo): 200 · distinto: 409
+    SELECT shipment  (o Shipment.open)      -- guía nueva si es su primer evento
     shipment.apply(event)                   -- regla terminal → 409
-    INSERT tracking_event
-    UPDATE shipment (estado actual)
+    UPSERT shipment (estado actual)
+    INSERT tracking_event                   -- PK(tenant,event_id): última defensa de idempotencia
     INSERT notification (PENDIENTE)         -- outbox, UNIQUE(tenant,event_id)
   COMMIT
   workSignal.wake()                         -- despierta al worker (latencia baja)
@@ -160,7 +163,7 @@ POST /v1/guias/G-1/eventos ──▶ validar (zod) ──▶ RegisterTrackingEve
 loop cada POLL_INTERVAL o al recibir wake():
   UPDATE notifications SET status='ENVIANDO', attempts=attempts+1, locked_until=now()+lease
    WHERE id IN (SELECT id … WHERE (status='PENDIENTE' AND next_attempt_at<=now())
-                              OR (status='ENVIANDO' AND locked_until<now())   -- recuperación ante caídas
+                              OR (status='ENVIANDO' AND locked_until<now() AND attempts<max)  -- recuperación ante caídas
                 ORDER BY next_attempt_at LIMIT :batch FOR UPDATE SKIP LOCKED)
    RETURNING *;
   por cada una (en paralelo):
@@ -169,6 +172,7 @@ loop cada POLL_INTERVAL o al recibir wake():
     fallo y attempts<5  → PENDIENTE, next_attempt_at = now()+backoff(attempts)
     fallo y attempts=5  → FALLIDA (consultable y reintentable)
     se registra cada intento en notification_attempts
+  antes de reclamar: ENVIANDO con lease vencido en el último intento → FALLIDA (LEASE_EXPIRADO), sin 6.º envío
 ```
 
 ---
@@ -182,24 +186,27 @@ loop cada POLL_INTERVAL o al recibir wake():
 │   ├── agents/qa-verifier.md         # agente de QA: funcional, integración, E2E, smoke post-despliegue
 │   └── skills/tracking-notifier/SKILL.md  # skill de ingeniería para este proyecto
 ├── CLAUDE.md                         # contexto del proyecto para asistentes IA
-├── docker/webhook-receiver/server.mjs  # webhook de prueba: imprime y verifica la firma; modo de fallo configurable
+├── docker/
+│   ├── webhook-receiver/server.mjs   # webhook de prueba: imprime y verifica la firma; modo de fallo configurable
+│   └── postgres/init/                # crea la BD de pruebas en el contenedor
 ├── docs/
 │   ├── adr-001.md                    # Transactional Outbox + SKIP LOCKED
 │   ├── informe-implementacion.md     # este documento
+│   ├── despliegue-gcp.md             # despliegue de referencia en GCP
 │   └── openapi.yaml                  # contrato OpenAPI 3.1
 ├── scripts/smoke-test.mjs            # E2E post-despliegue contra el stack levantado
 ├── src/
 │   ├── domain/
 │   │   ├── shared/domain-error.ts
 │   │   ├── tenant/tenant-id.ts
-│   │   ├── shipment/{shipment.ts, shipment-status.ts, tracking-event.ts, tracking-number.ts, event-id.ts, errors.ts}
-│   │   ├── notification/{notification.ts, notification-status.ts, retry-policy.ts}
+│   │   ├── shipment/{shipment.ts, shipment-status.ts, tracking-event.ts, tracking-number.ts, event-id.ts}
+│   │   ├── notification/{notification.ts, retry-policy.ts}
 │   │   └── webhook/{webhook-subscription.ts, webhook-url.ts}
 │   ├── application/
-│   │   ├── ports/{repositories.ts, transaction-runner.ts, webhook-sender.ts, clock.ts, id-generator.ts, secret-cipher.ts, secret-generator.ts, work-signal.ts, logger.ts, metrics.ts}
+│   │   ├── ports/{repositories.ts, transaction-runner.ts, webhook-sender.ts, system.ts}
 │   │   ├── errors.ts
-│   │   └── use-cases/{register-tracking-event, get-shipment-history, configure-webhook, get-webhook,
-│   │                  list-notifications, get-notification, retry-notification, dispatch-due-notifications}.ts
+│   │   └── use-cases/{register-tracking-event, get-shipment-history, configure-webhook,
+│   │                  notification-queries, dispatch-due-notifications}.ts
 │   ├── infrastructure/
 │   │   ├── config/env.ts             # esquema zod de variables de entorno (fail-fast)
 │   │   ├── persistence/
@@ -208,15 +215,16 @@ loop cada POLL_INTERVAL o al recibir wake():
 │   │   │   ├── pg-pool.ts, pg-transaction-runner.ts
 │   │   │   └── repositories/*.ts
 │   │   ├── http/
-│   │   │   ├── controllers/*.controller.ts
+│   │   │   ├── controllers/{shipments,webhook,notifications,ops}.controller.ts
 │   │   │   ├── schemas.ts            # zod
-│   │   │   ├── tenant.decorator.ts, zod-validation.pipe.ts
+│   │   │   ├── validation.ts         # ZodValidationPipe + decorador @TenantHeader
+│   │   │   ├── presenters.ts         # dominio → contrato HTTP
 │   │   │   └── problem-details.filter.ts   # RFC 9457
 │   │   ├── webhook/{http-webhook-sender.ts, hmac-signer.ts, ssrf-guard.ts}
-│   │   ├── crypto/{aes-gcm-secret-cipher.ts, random-secret-generator.ts}
+│   │   ├── crypto/{aes-gcm-secret-cipher.ts, system-adapters.ts}
 │   │   ├── worker/notification-worker.ts
 │   │   ├── observability/{logger.ts, metrics.ts}
-│   │   └── nest/{app.module.ts, providers.ts, health.controller.ts}
+│   │   └── nest/{app.module.ts, providers.ts, create-app.ts, tokens.ts}
 │   └── main.ts
 ├── test/
 │   ├── unit/{domain,application,infrastructure}/**/*.spec.ts
@@ -225,7 +233,7 @@ loop cada POLL_INTERVAL o al recibir wake():
 │   ├── e2e/**/*.e2e-spec.ts          # app completa + Postgres real + webhook falso
 │   └── support/*                     # fakes, db helpers, servidor webhook de prueba
 ├── .env.example, .gitignore, .dockerignore, Dockerfile, docker-compose.yml
-├── jest.config.ts, eslint.config.mjs, tsconfig*.json, package.json
+├── jest.config.js, eslint.config.mjs, tsconfig*.json, package.json
 └── README.md
 ```
 
@@ -294,10 +302,11 @@ CREATE TABLE notification_attempts (
   attempted_at       timestamptz NOT NULL,
   duration_ms        int  NOT NULL,
   http_status        int  NULL,
-  error_code         text NULL,
-  UNIQUE (notification_id, attempt_number)
-);
+  error_code         text NULL                 -- sin UNIQUE(notification_id, attempt_number): un reintento
+);                                             -- manual reinicia el contador; el historial se ordena por id
 ```
+
+La fuente de verdad del esquema es `src/infrastructure/persistence/migrations/001_init.sql`.
 
 **Aislamiento por tenant:** todas las PK y FK incluyen `tenant_id`, y todos los métodos de repositorio exigen `TenantId` como parámetro obligatorio. Como defensa en profundidad para el futuro queda Row-Level Security de PostgreSQL (ver §10).
 
@@ -308,8 +317,8 @@ CREATE TABLE notification_attempts (
 Todas las rutas de negocio exigen la cabecera `X-Tenant-Id`. Los errores usan `application/problem+json` (RFC 9457):
 
 ```json
-{ "type": "https://errors.tracking-notifier.local/guia-en-estado-terminal",
-  "title": "La guía está en un estado terminal", "status": 409,
+{ "type": "https://tracking-notifier.domina.dev/problemas/guia-en-estado-terminal",
+  "title": "Conflicto con el estado del recurso", "status": 409,
   "detail": "La guía G-1 está ENTREGADA y no admite más cambios de estado",
   "instance": "/v1/guias/G-1/eventos", "code": "GUIA_EN_ESTADO_TERMINAL",
   "requestId": "6f1c…", "errors": [ { "path": "fechaEvento", "message": "…" } ] }
@@ -366,7 +375,7 @@ X-Delivery-Attempt: {n}
 
 | Nivel | Qué prueba y por qué | Herramienta |
 |---|---|---|
-| Unitarias de dominio | Reglas de transición (terminales), selección del estado actual con eventos fuera de orden, hash de idempotencia, máquina de estados de `Notification` y `RetryPolicy` (espera creciente con jitter acotado, tope de 5) | Jest |
+| Unitarias de dominio | Reglas de transición (terminales), selección del estado actual con eventos fuera de orden, comparación de contenido para idempotencia, rechazo de `fechaEvento` futura, máquina de estados de `Notification` y `RetryPolicy` (espera creciente con jitter acotado, tope de 5) | Jest |
 | Unitarias de aplicación | Casos de uso con *fakes* en memoria: idempotencia (200/409), aislamiento, el despacho marca ENVIADA, PENDIENTE o FALLIDA | Jest |
 | Unitarias de infraestructura | Firma HMAC (vector conocido), guardia SSRF (rangos IPv4/IPv6), cifrado AES-GCM ida y vuelta, mapeo de errores a RFC 9457 | Jest |
 | Arquitectura | `domain/` y `application/` no importan frameworks ni infraestructura | Jest (análisis de imports) |

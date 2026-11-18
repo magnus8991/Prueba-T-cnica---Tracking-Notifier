@@ -76,7 +76,7 @@ npm run start:dev
 | `npm run test:smoke` | **E2E post-despliegue** contra el stack levantado con `docker compose up` | Stack en ejecución |
 | `npm run test:cov` | Todas, con cobertura (umbral ≥ 90 % en `src/domain`) | PostgreSQL |
 
-**Estado actual:** 196 pruebas en verde y smoke post-despliegue 12/12 contra el servicio compilado.
+**Estado actual:** 218 pruebas en verde y smoke post-despliegue 12/12 contra el servicio compilado. Una auditoría QA independiente (agente `qa-verifier`) encontró 7 defectos de severidad media y baja; todos están corregidos y tienen prueba de regresión.
 
 ### Qué se prueba y por qué
 
@@ -164,7 +164,8 @@ Todos los errores usan **un único formato**, RFC 9457 `application/problem+json
 | 11 | Guía de otro tenant | 404, igual que una inexistente, para no revelar su existencia |
 | 12 | Secreto HMAC | Lo genera el servidor (`whsec_` + 32 bytes), **se muestra una sola vez** y se guarda cifrado (AES-256-GCM con el tenant como AAD) |
 | 13 | `observacion` | Se trata como posible dato personal: se guarda y se envía al cliente, pero **nunca se registra en logs** |
-| 14 | `fechaEvento` | ISO 8601 **con zona horaria obligatoria**, para evitar ambigüedad de hora local |
+| 14 | `fechaEvento` | ISO 8601 **con zona horaria obligatoria**, para evitar ambigüedad de hora local. Se rechaza si está más de 5 minutos en el futuro (`FECHA_EVENTO_FUTURA`), porque un reloj desfasado del emisor congelaría el estado de la guía |
+| 15 | Concurrencia en operaciones de soporte | De N reintentos manuales simultáneos solo uno es aceptado (202) y el resto recibe 409. El primer `PUT /webhook` concurrente crea y revela un único secreto |
 
 ### Seguridad
 

@@ -199,7 +199,7 @@ paths:
               schema: { $ref: '#/components/schemas/Notificacion' }
         '404': { $ref: '#/components/responses/Problem' }
         '409':
-          description: '`NOTIFICACION_NO_REINTENTABLE`: solo se reintentan notificaciones FALLIDA'
+          description: '`NOTIFICACION_NO_REINTENTABLE`: solo se reintentan notificaciones FALLIDA (con reintentos concurrentes, solo uno es aceptado)'
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -277,7 +277,7 @@ components:
       schema: { type: string }
   responses:
     BadRequest:
-      description: Validación fallida (`VALIDACION_FALLIDA`, `TENANT_INVALIDO`, `JSON_MALFORMADO`, `URL_WEBHOOK_INVALIDA`, ...)
+      description: Validación fallida (`VALIDACION_FALLIDA`, `TENANT_INVALIDO`, `JSON_MALFORMADO`, `FECHA_EVENTO_FUTURA`, `URL_WEBHOOK_INVALIDA`, `URL_WEBHOOK_NO_PERMITIDA`, ...)
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
