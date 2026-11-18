@@ -385,6 +385,16 @@ Comandos:
 
 ---
 
+## 9.1 Alineación con el stack de Domina (Node.js, React, GCP)
+
+- **Node.js** es el runtime del servicio (Node 26 LTS + NestJS 12).
+- **GCP:** el servicio está listo para Cloud Run:
+  - Escucha en `PORT`, es *stateless*, hace apagado ordenado con SIGTERM y expone *health checks*.
+  - Usa Cloud SQL for PostgreSQL, por socket `/cloudsql` o IP privada con TLS, y Secret Manager para `DATABASE_URL` y la clave de cifrado.
+  - Sus logs son JSON compatibles con Cloud Logging (`severity`, `message`, `logging.googleapis.com/trace`) y sus métricas, Prometheus (Managed Service for Prometheus).
+  - `APP_ROLE=api|worker|all` permite desplegar la misma imagen como dos servicios: la API con autoescalado y el worker con `--no-cpu-throttling`. El detalle está en `docs/despliegue-gcp.md`.
+- **React:** el contrato OpenAPI 3.1 permite generar un cliente tipado para un panel de clientes; `CORS_ORIGINS` habilita su origen.
+
 ## 10. Consideraciones adicionales y trabajo futuro
 
 - **Escalabilidad:** el worker es seguro con N réplicas (SKIP LOCKED + lease). A gran escala se podría migrar el outbox a un broker (Kafka/SQS) con un relay o CDC (Debezium).

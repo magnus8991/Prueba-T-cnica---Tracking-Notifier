@@ -4,7 +4,9 @@ Microservicio multi-tenant (NestJS 12 + TypeScript 6 + PostgreSQL 18) que regist
 
 - Antes de cualquier cambio, carga la skill `.claude/skills/tracking-notifier/SKILL.md`. Contiene las reglas de negocio, de arquitectura, de seguridad y el flujo de pruebas obligatorio.
 - Al terminar, verifica con el agente `.claude/agents/qa-verifier.md`: unitarias, integración, E2E y smoke post-despliegue.
-- El diseño completo está en `docs/informe-implementacion.md` y la decisión principal en `docs/adr-001.md`.
+- El diseño completo está en `docs/informe-implementacion.md`, la decisión principal en `docs/adr-001.md` y el despliegue de referencia en GCP en `docs/despliegue-gcp.md`.
+- NestJS 12 es ESM-only: jest corre con `node --experimental-vm-modules` (ya configurado en los scripts de npm). Usa siempre `npm test` y nunca `npx jest` directo.
+- Commits: `<tipo>: <VERBO> <qué>` (por ejemplo `feat: ADD …`, `fix: REPAIR …`, `refactor: MODIFY …`), sin líneas de autoría de IA.
 
 Comandos:
 
