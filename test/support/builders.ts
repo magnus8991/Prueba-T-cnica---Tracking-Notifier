@@ -7,7 +7,7 @@ import { TenantId } from '../../src/domain/tenant/tenant-id';
 /** Datos ficticios para pruebas. */
 export const TENANT_A = TenantId.create('tenant-a');
 export const TENANT_B = TenantId.create('tenant-b');
-export const GUIA_1 = TrackingNumber.create('GUIA-0001');
+export const GUIA_1 = TrackingNumber.create('10000001');
 
 let counter = 0;
 export function fakeUuid(): string {

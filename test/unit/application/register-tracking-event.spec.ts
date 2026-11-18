@@ -11,7 +11,7 @@ describe('RegisterTrackingEvent (RF1)', () => {
 
   const command = (overrides: Partial<RegisterTrackingEventCommand> = {}): RegisterTrackingEventCommand => ({
     tenantId: 'tenant-a',
-    trackingNumber: 'GUIA-0001',
+    trackingNumber: '10000001',
     eventId: '11111111-1111-4111-8111-111111111111',
     status: 'CREADA',
     occurredAt: new Date('2026-11-01T09:00:00Z'),
@@ -60,7 +60,7 @@ describe('RegisterTrackingEvent (RF1)', () => {
 
   it('el mismo eventId reutilizado en otra guía también es conflicto', async () => {
     await useCase.execute(command());
-    const error = await captureAsyncError(() => useCase.execute(command({ trackingNumber: 'GUIA-0002' })));
+    const error = await captureAsyncError(() => useCase.execute(command({ trackingNumber: '10000002' })));
     expect(error.code).toBe('EVENT_ID_CONFLICTO');
   });
 
@@ -90,7 +90,7 @@ describe('RegisterTrackingEvent (RF1)', () => {
 
   it('toma bloqueos en orden fijo evento → guía (evita deadlocks)', async () => {
     await useCase.execute(command());
-    expect(db.locks).toEqual(['event:tenant-a:11111111-1111-4111-8111-111111111111', 'shipment:tenant-a:GUIA-0001']);
+    expect(db.locks).toEqual(['event:tenant-a:11111111-1111-4111-8111-111111111111', 'shipment:tenant-a:10000001']);
   });
 
   it.each([

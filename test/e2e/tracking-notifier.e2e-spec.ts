@@ -59,13 +59,13 @@ describe('tracking-notifier E2E', () => {
   describe('RF1 · Registrar evento', () => {
     it('201: registra el evento, devuelve Location, X-Request-Id y el estado actual', async () => {
       const body = event();
-      const res = await postEvent('GUIA-0001', body).expect(201);
+      const res = await postEvent('10000001', body).expect(201);
 
-      expect(res.headers.location).toBe('/v1/guias/GUIA-0001');
+      expect(res.headers.location).toBe('/v1/guias/10000001');
       expect(res.headers['x-request-id']).toBeDefined();
       expect(res.body).toMatchObject({
         eventId: body.eventId,
-        numeroGuia: 'GUIA-0001',
+        numeroGuia: '10000001',
         estado: 'CREADA',
         fechaEvento: '2026-11-17T13:00:00.000Z',
         observacion: 'Dato ficticio de prueba',
@@ -76,8 +76,8 @@ describe('tracking-notifier E2E', () => {
     it('idempotencia: el mismo eventId responde 200 con Idempotent-Replayed y no duplica evento ni notificación', async () => {
       await configureWebhook().expect(201);
       const body = event();
-      await postEvent('GUIA-0001', body).expect(201);
-      const replay = await postEvent('GUIA-0001', body).expect(200);
+      await postEvent('10000001', body).expect(201);
+      const replay = await postEvent('10000001', body).expect(200);
 
       expect(replay.headers['idempotent-replayed']).toBe('true');
       await eventually(notifications, (items) => items[0]?.estado === 'ENVIADA');
@@ -88,18 +88,18 @@ describe('tracking-notifier E2E', () => {
 
     it('idempotencia: el mismo eventId con otro contenido → 409 EVENT_ID_CONFLICTO', async () => {
       const body = event();
-      await postEvent('GUIA-0001', body).expect(201);
-      const res = await postEvent('GUIA-0001', { ...body, estado: 'EN_RUTA' }).expect(409);
+      await postEvent('10000001', body).expect(201);
+      const res = await postEvent('10000001', { ...body, estado: 'EN_RUTA' }).expect(409);
       expect(res.body.code).toBe('EVENT_ID_CONFLICTO');
     });
 
     it.each(['ENTREGADA', 'DEVUELTA'])('una guía %s rechaza nuevos estados con 409 problem+json', async (terminal) => {
-      await postEvent('GUIA-0001', event({ estado: 'EN_RUTA' })).expect(201);
-      await postEvent('GUIA-0001', event({ estado: terminal, fechaEvento: '2026-11-17T10:00:00Z' })).expect(201);
+      await postEvent('10000001', event({ estado: 'EN_RUTA' })).expect(201);
+      await postEvent('10000001', event({ estado: terminal, fechaEvento: '2026-11-17T10:00:00Z' })).expect(201);
 
-      const res = await postEvent('GUIA-0001', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T11:00:00Z' })).expect(409);
+      const res = await postEvent('10000001', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T11:00:00Z' })).expect(409);
       expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
-      expect(res.body).toMatchObject({ status: 409, code: 'GUIA_EN_ESTADO_TERMINAL', instance: '/v1/guias/GUIA-0001/eventos' });
+      expect(res.body).toMatchObject({ status: 409, code: 'GUIA_EN_ESTADO_TERMINAL', instance: '/v1/guias/10000001/eventos' });
       expect(res.body.requestId).toBe(res.headers['x-request-id']);
     });
 
@@ -108,7 +108,7 @@ describe('tracking-notifier E2E', () => {
       webhook.responder = () => ({ status: 200, delayMs: 350 });
 
       const started = Date.now();
-      await postEvent('GUIA-0001', event()).expect(201);
+      await postEvent('10000001', event()).expect(201);
       expect(Date.now() - started).toBeLessThan(300);
 
       await eventually(notifications, (items) => items[0]?.estado === 'ENVIADA');
@@ -125,28 +125,28 @@ describe('tracking-notifier E2E', () => {
       ['observación muy larga', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z', observacion: 'x'.repeat(501) }, 'observacion'],
       ['campo desconocido', { eventId: randomUUID(), estado: 'CREADA', fechaEvento: '2026-11-17T08:00:00Z', tenant: 'otro' }, '(body)'],
     ])('400 VALIDACION_FALLIDA: %s', async (_case, body, path) => {
-      const res = await postEvent('GUIA-0001', body).expect(400);
+      const res = await postEvent('10000001', body).expect(400);
       expect(res.headers['content-type']).toMatch(/application\/problem\+json/);
       expect(res.body).toMatchObject({ status: 400, code: 'VALIDACION_FALLIDA', type: expect.stringContaining('validacion-fallida') });
       expect(res.body.errors.map((e: { path: string }) => e.path)).toContain(path);
     });
 
     it('400 TENANT_INVALIDO si falta o es inválida la cabecera X-Tenant-Id', async () => {
-      expect((await api().post('/v1/guias/GUIA-0001/eventos').send(event()).expect(400)).body.code).toBe('TENANT_INVALIDO');
-      expect((await postEvent('GUIA-0001', event(), 'tenant con espacios').expect(400)).body.code).toBe('TENANT_INVALIDO');
+      expect((await api().post('/v1/guias/10000001/eventos').send(event()).expect(400)).body.code).toBe('TENANT_INVALIDO');
+      expect((await postEvent('10000001', event(), 'tenant con espacios').expect(400)).body.code).toBe('TENANT_INVALIDO');
     });
 
     it('400 FECHA_EVENTO_FUTURA: una fecha del emisor muy en el futuro no congela la guía', async () => {
-      const res = await postEvent('GUIA-0001', event({ fechaEvento: '9999-12-31T00:00:00Z' })).expect(400);
+      const res = await postEvent('10000001', event({ fechaEvento: '9999-12-31T00:00:00Z' })).expect(400);
       expect(res.body.code).toBe('FECHA_EVENTO_FUTURA');
     });
 
     it('los errores previos al routing (JSON malformado, 415) también llevan requestId y quedan en el log de acceso', async () => {
-      const malformed = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'application/json').send('{"x":').expect(400);
+      const malformed = await api().post('/v1/guias/10000001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'application/json').send('{"x":').expect(400);
       expect(malformed.headers['x-request-id']).toBeDefined();
       expect(malformed.body.requestId).toBe(malformed.headers['x-request-id']);
 
-      const unsupported = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'text/plain').send('hola').expect(415);
+      const unsupported = await api().post('/v1/guias/10000001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'text/plain').send('hola').expect(415);
       expect(unsupported.body.requestId).toBe(unsupported.headers['x-request-id']);
       expect(logs.text).toContain(unsupported.headers['x-request-id']);
     });
@@ -156,17 +156,17 @@ describe('tracking-notifier E2E', () => {
     });
 
     it('400 JSON_MALFORMADO', async () => {
-      const res = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'application/json').send('{"eventId":').expect(400);
+      const res = await api().post('/v1/guias/10000001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'application/json').send('{"eventId":').expect(400);
       expect(res.body.code).toBe('JSON_MALFORMADO');
     });
 
     it('415 si el cuerpo no es JSON', async () => {
-      const res = await api().post('/v1/guias/GUIA-0001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'text/plain').send('hola').expect(415);
+      const res = await api().post('/v1/guias/10000001/eventos').set('X-Tenant-Id', TENANT).set('Content-Type', 'text/plain').send('hola').expect(415);
       expect(res.body.code).toBe('TIPO_CONTENIDO_NO_SOPORTADO');
     });
 
     it('413 si el cuerpo excede el límite', async () => {
-      const res = await postEvent('GUIA-0001', { ...event(), observacion: 'x'.repeat(20_000) }).expect(413);
+      const res = await postEvent('10000001', { ...event(), observacion: 'x'.repeat(20_000) }).expect(413);
       expect(res.body.code).toBe('CUERPO_DEMASIADO_GRANDE');
     });
 
@@ -185,11 +185,11 @@ describe('tracking-notifier E2E', () => {
 
   describe('RF2 · Consultar historial', () => {
     it('devuelve estado actual y eventos en orden cronológico (aunque lleguen desordenados)', async () => {
-      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T12:00:00Z' })).expect(201);
-      await postEvent('GUIA-0002', event({ estado: 'CREADA', fechaEvento: '2026-11-17T07:00:00Z' })).expect(201);
-      await postEvent('GUIA-0002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T09:30:00Z' })).expect(201);
+      await postEvent('10000002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T12:00:00Z' })).expect(201);
+      await postEvent('10000002', event({ estado: 'CREADA', fechaEvento: '2026-11-17T07:00:00Z' })).expect(201);
+      await postEvent('10000002', event({ estado: 'EN_RUTA', fechaEvento: '2026-11-17T09:30:00Z' })).expect(201);
 
-      const res = await api().get('/v1/guias/GUIA-0002').set('X-Tenant-Id', TENANT).expect(200);
+      const res = await api().get('/v1/guias/10000002').set('X-Tenant-Id', TENANT).expect(200);
       expect(res.body.estadoActual).toBe('EN_RUTA');
       expect(res.body.fechaEstadoActual).toBe('2026-11-17T12:00:00.000Z');
       expect(res.body.eventos.map((e: { fechaEvento: string }) => e.fechaEvento)).toEqual([
@@ -201,10 +201,10 @@ describe('tracking-notifier E2E', () => {
 
     it('AISLAMIENTO: un tenant nunca ve guías, notificaciones ni webhook de otro tenant', async () => {
       await configureWebhook(TENANT).expect(201);
-      await postEvent('GUIA-0003', event()).expect(201);
+      await postEvent('10000003', event()).expect(201);
       const [own] = await notifications(TENANT);
 
-      expect((await api().get('/v1/guias/GUIA-0003').set('X-Tenant-Id', OTHER_TENANT).expect(404)).body.code).toBe('RECURSO_NO_ENCONTRADO');
+      expect((await api().get('/v1/guias/10000003').set('X-Tenant-Id', OTHER_TENANT).expect(404)).body.code).toBe('RECURSO_NO_ENCONTRADO');
       expect(await notifications(OTHER_TENANT)).toEqual([]);
       await api().get(`/v1/notificaciones/${own!.id}`).set('X-Tenant-Id', OTHER_TENANT).expect(404);
       await api().post(`/v1/notificaciones/${own!.id}/reintentar`).set('X-Tenant-Id', OTHER_TENANT).expect(404);
@@ -212,9 +212,9 @@ describe('tracking-notifier E2E', () => {
     });
 
     it('la misma guía en dos tenants son guías independientes', async () => {
-      await postEvent('GUIA-0004', event({ estado: 'ENTREGADA' }), TENANT).expect(201);
-      await postEvent('GUIA-0004', event({ estado: 'EN_RUTA' }), OTHER_TENANT).expect(201);
-      expect((await api().get('/v1/guias/GUIA-0004').set('X-Tenant-Id', OTHER_TENANT).expect(200)).body.estadoActual).toBe('EN_RUTA');
+      await postEvent('10000004', event({ estado: 'ENTREGADA' }), TENANT).expect(201);
+      await postEvent('10000004', event({ estado: 'EN_RUTA' }), OTHER_TENANT).expect(201);
+      expect((await api().get('/v1/guias/10000004').set('X-Tenant-Id', OTHER_TENANT).expect(200)).body.estadoActual).toBe('EN_RUTA');
     });
   });
 
@@ -244,14 +244,14 @@ describe('tracking-notifier E2E', () => {
     it('envía un POST firmado (HMAC verificable) con el evento y la marca ENVIADA', async () => {
       const { body: hook } = await configureWebhook().expect(201);
       const body = event({ estado: 'EN_RUTA' });
-      await postEvent('GUIA-0005', body).expect(201);
+      await postEvent('10000005', body).expect(201);
       await webhook.waitFor(1);
 
       const [received] = webhook.received;
       expect(JSON.parse(received!.body)).toMatchObject({
         type: 'guia.estado_actualizado',
         eventId: body.eventId,
-        numeroGuia: 'GUIA-0005',
+        numeroGuia: '10000005',
         estado: 'EN_RUTA',
       });
       expect(received!.headers['webhook-id']).toBe(body.eventId);
@@ -266,7 +266,7 @@ describe('tracking-notifier E2E', () => {
     it('webhook caído (500): 5 intentos con espera creciente → FALLIDA, consultable, y reintento manual', async () => {
       await configureWebhook().expect(201);
       webhook.responder = () => ({ status: 500 });
-      await postEvent('GUIA-0006', event()).expect(201);
+      await postEvent('10000006', event()).expect(201);
 
       const [failed] = await eventually(
         () => notifications(TENANT, '?estado=FALLIDA'),
@@ -296,7 +296,7 @@ describe('tracking-notifier E2E', () => {
     });
 
     it('reintentos manuales concurrentes: solo uno es aceptado (202), el resto 409; se entrega una sola vez', async () => {
-      await postEvent('GUIA-0010', event()).expect(201); // sin webhook → termina FALLIDA
+      await postEvent('10000010', event()).expect(201); // sin webhook → termina FALLIDA
       const [failed] = await eventually(() => notifications(TENANT, '?estado=FALLIDA'), (items) => items.length === 1);
       await configureWebhook().expect(201);
 
@@ -312,7 +312,7 @@ describe('tracking-notifier E2E', () => {
     it('webhook que no responde a tiempo → TIMEOUT y reintento; se recupera al segundo intento', async () => {
       await configureWebhook().expect(201);
       webhook.responder = (_req, index) => (index === 0 ? { status: 200, delayMs: 1_500 } : { status: 200 });
-      await postEvent('GUIA-0007', event()).expect(201);
+      await postEvent('10000007', event()).expect(201);
 
       const [n] = await eventually(notifications, (items) => items[0]?.estado === 'ENVIADA');
       expect(n!.intentos).toBe(2);
@@ -321,7 +321,7 @@ describe('tracking-notifier E2E', () => {
     });
 
     it('sin webhook configurado la notificación no se pierde: termina FALLIDA y se puede reintentar luego', async () => {
-      await postEvent('GUIA-0008', event()).expect(201);
+      await postEvent('10000008', event()).expect(201);
       const [failed] = await eventually(() => notifications(TENANT, '?estado=FALLIDA'), (items) => items.length === 1);
       expect(failed!.ultimoError).toBe('WEBHOOK_NO_CONFIGURADO');
 
@@ -334,7 +334,7 @@ describe('tracking-notifier E2E', () => {
   describe('Seguridad · logs sin datos personales', () => {
     it('los logs son JSON estructurado y no contienen observación, secretos ni URL del webhook', async () => {
       const { body: hook } = await configureWebhook().expect(201);
-      await postEvent('GUIA-0009', event({ observacion: 'Entregado a Pepito Pérez, CC 123456789' })).expect(201);
+      await postEvent('10000009', event({ observacion: 'Entregado a Pepito Pérez, CC 123456789' })).expect(201);
       await webhook.waitFor(1);
       await eventually(notifications, (items) => items[0]?.estado === 'ENVIADA');
 

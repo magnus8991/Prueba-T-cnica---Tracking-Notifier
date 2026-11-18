@@ -14,7 +14,7 @@ describe('Consultas y configuración', () => {
   const clock = new FixedClock();
 
   const event = (eventId: string, status: string, occurredAt: string, tenantId = 'tenant-a') =>
-    register.execute({ tenantId, trackingNumber: 'GUIA-0001', eventId, status, occurredAt: new Date(occurredAt), observation: null });
+    register.execute({ tenantId, trackingNumber: '10000001', eventId, status, occurredAt: new Date(occurredAt), observation: null });
 
   beforeEach(() => {
     db = new InMemoryDatabase();
@@ -27,7 +27,7 @@ describe('Consultas y configuración', () => {
       await event('00000000-0000-4000-8000-000000000001', 'CREADA', '2026-11-01T08:00:00Z');
       await event('00000000-0000-4000-8000-000000000002', 'EN_RUTA', '2026-11-01T10:00:00Z');
 
-      const history = await new GetShipmentHistory(db.shipments, db.events).execute({ tenantId: 'tenant-a', trackingNumber: 'GUIA-0001' });
+      const history = await new GetShipmentHistory(db.shipments, db.events).execute({ tenantId: 'tenant-a', trackingNumber: '10000001' });
 
       expect(history.shipment.currentStatus).toBe('EN_RUTA');
       expect(history.events.map((e) => e.eventId.value.slice(-1))).toEqual(['1', '2', '3']);
@@ -36,7 +36,7 @@ describe('Consultas y configuración', () => {
     it('un tenant nunca ve guías de otro tenant: responde como inexistente', async () => {
       await event('00000000-0000-4000-8000-000000000001', 'CREADA', '2026-11-01T08:00:00Z', 'tenant-a');
       const error = await captureAsyncError(() =>
-        new GetShipmentHistory(db.shipments, db.events).execute({ tenantId: 'tenant-b', trackingNumber: 'GUIA-0001' }),
+        new GetShipmentHistory(db.shipments, db.events).execute({ tenantId: 'tenant-b', trackingNumber: '10000001' }),
       );
       expect(error).toBeInstanceOf(NotFoundError);
       expect(error.message).toBe('Guía no encontrada');

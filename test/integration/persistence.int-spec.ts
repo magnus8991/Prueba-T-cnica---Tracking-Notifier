@@ -29,7 +29,7 @@ describe('Persistencia PostgreSQL (integración real)', () => {
 
   const cmd = (overrides: Partial<RegisterTrackingEventCommand> = {}): RegisterTrackingEventCommand => ({
     tenantId: 'tenant-a',
-    trackingNumber: 'GUIA-0001',
+    trackingNumber: '10000001',
     eventId: new CryptoIdGenerator().uuid(),
     status: 'CREADA',
     occurredAt: new Date('2026-11-01T09:00:00Z'),
@@ -79,7 +79,7 @@ describe('Persistencia PostgreSQL (integración real)', () => {
     ]);
     const history = await new GetShipmentHistory(new PgShipmentRepository(pool), new PgTrackingEventRepository(pool)).execute({
       tenantId: 'tenant-a',
-      trackingNumber: 'GUIA-0001',
+      trackingNumber: '10000001',
     });
     // Si ENTREGADA ganó, EN_RUTA fue rechazado; si EN_RUTA ganó, ENTREGADA lo cierra después. En ambos casos queda ENTREGADA.
     expect(history.shipment.currentStatus).toBe('ENTREGADA');
@@ -92,7 +92,7 @@ describe('Persistencia PostgreSQL (integración real)', () => {
     await register.execute(cmd({ eventId: 'a0000000-0000-4000-8000-000000000001', status: 'CREADA', occurredAt: t }));
     await register.execute(cmd({ eventId: 'a0000000-0000-4000-8000-000000000002', status: 'EN_RUTA', occurredAt: t }));
 
-    const events = await new PgTrackingEventRepository(pool).listByShipment(TenantId.create('tenant-a'), TrackingNumber.create('GUIA-0001'));
+    const events = await new PgTrackingEventRepository(pool).listByShipment(TenantId.create('tenant-a'), TrackingNumber.create('10000001'));
     expect(events.map((e) => e.eventId.value.slice(-1))).toEqual(['1', '2', '3']);
   });
 
@@ -100,7 +100,7 @@ describe('Persistencia PostgreSQL (integración real)', () => {
     const e = cmd();
     await register.execute(e);
     const tenantB = TenantId.create('tenant-b');
-    expect(await new PgShipmentRepository(pool).find(tenantB, TrackingNumber.create('GUIA-0001'))).toBeNull();
+    expect(await new PgShipmentRepository(pool).find(tenantB, TrackingNumber.create('10000001'))).toBeNull();
     expect(await new PgTrackingEventRepository(pool).findById(tenantB, EventId.create(e.eventId))).toBeNull();
     expect(await notifications().list(tenantB, { limit: 10 })).toEqual([]);
     const [own] = await notifications().list(TenantId.create('tenant-a'), { limit: 10 });

@@ -14,7 +14,9 @@ describe('Value objects', () => {
   });
 
   describe('TrackingNumber', () => {
-    it('acepta alfanuméricos y guiones', () => expect(TrackingNumber.create('GUIA-0001').value).toBe('GUIA-0001'));
+    it('acepta el formato numérico de Domina (Ej: 12345678)', () => expect(TrackingNumber.create('12345678').value).toBe('12345678'));
+    it('conserva los ceros a la izquierda: es texto, no número', () => expect(TrackingNumber.create('00012345').value).toBe('00012345'));
+    it('acepta también alfanuméricos y guiones de otros formatos', () => expect(TrackingNumber.create('RR123456789CO').value).toBe('RR123456789CO'));
     it.each(['', 'G 1', 'x'.repeat(41), 'G/1'])('rechaza %p', (raw) =>
       expect(captureError(() => TrackingNumber.create(raw)).code).toBe('NUMERO_GUIA_INVALIDO'),
     );

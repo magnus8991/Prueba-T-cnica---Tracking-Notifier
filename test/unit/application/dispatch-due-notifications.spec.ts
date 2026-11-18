@@ -39,7 +39,7 @@ describe('DispatchDueNotifications (RF4)', () => {
     await subs.save(WebhookSubscription.create({ tenantId, url: WebhookUrl.create('https://cliente.example.com/hook'), secret: 'whsec_x', now: clock.now() }));
     await new RegisterTrackingEvent(db, clock, new SequentialIds(), new SpyWorkSignal(), 5).execute({
       tenantId: 'tenant-a',
-      trackingNumber: 'GUIA-0001',
+      trackingNumber: '10000001',
       eventId: EVENT_ID,
       status: 'EN_RUTA',
       occurredAt: new Date('2026-11-01T09:00:00Z'),
@@ -54,7 +54,7 @@ describe('DispatchDueNotifications (RF4)', () => {
     expect(sender.deliveries).toEqual([
       expect.objectContaining({ url: 'https://cliente.example.com/hook', secret: 'whsec_x', messageId: EVENT_ID, attempt: 1 }),
     ]);
-    expect(sender.deliveries[0]!.payload).toMatchObject({ type: 'guia.estado_actualizado', eventId: EVENT_ID, numeroGuia: 'GUIA-0001', estado: 'EN_RUTA' });
+    expect(sender.deliveries[0]!.payload).toMatchObject({ type: 'guia.estado_actualizado', eventId: EVENT_ID, numeroGuia: '10000001', estado: 'EN_RUTA' });
     expect(db.allNotifications[0]).toMatchObject({ status: 'ENVIADA', attempts: 1, lastHttpStatus: 200 });
     expect(db.allAttempts).toEqual([expect.objectContaining({ attemptNumber: 1, httpStatus: 200, errorCode: null })]);
     expect(metrics.outcomes).toEqual(['ENVIADA']);

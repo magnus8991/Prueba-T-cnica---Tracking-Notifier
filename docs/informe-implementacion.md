@@ -142,7 +142,7 @@ Reglas de dependencia, verificadas por ESLint y por una prueba de arquitectura:
 ### 4.3 Flujo de registro de un evento (RF1 + RF4)
 
 ```
-POST /v1/guias/G-1/eventos ──▶ validar (zod) ──▶ RegisterTrackingEvent
+POST /v1/guias/10000001/eventos ──▶ validar (zod) ──▶ RegisterTrackingEvent
   BEGIN
     pg_advisory_xact_lock(event:tenant:eventId)      -- orden fijo evento → guía (sin deadlocks)
     pg_advisory_xact_lock(shipment:tenant:guía)      -- serializa eventos concurrentes de la guía (incluso si aún no existe)
@@ -319,8 +319,8 @@ Todas las rutas de negocio exigen la cabecera `X-Tenant-Id`. Los errores usan `a
 ```json
 { "type": "https://tracking-notifier.domina.dev/problemas/guia-en-estado-terminal",
   "title": "Conflicto con el estado del recurso", "status": 409,
-  "detail": "La guía G-1 está ENTREGADA y no admite más cambios de estado",
-  "instance": "/v1/guias/G-1/eventos", "code": "GUIA_EN_ESTADO_TERMINAL",
+  "detail": "La guía 10000001 está ENTREGADA y no admite más cambios de estado",
+  "instance": "/v1/guias/10000001/eventos", "code": "GUIA_EN_ESTADO_TERMINAL",
   "requestId": "6f1c…", "errors": [ { "path": "fechaEvento", "message": "…" } ] }
 ```
 
@@ -347,7 +347,7 @@ webhook-timestamp: {unix seconds}
 webhook-signature: v1,{base64(HMAC-SHA256(secret, id + "." + timestamp + "." + body))}
 X-Delivery-Attempt: {n}
 
-{ "type": "guia.estado_actualizado", "eventId": "…", "numeroGuia": "G-1",
+{ "type": "guia.estado_actualizado", "eventId": "…", "numeroGuia": "10000001",
   "estado": "EN_RUTA", "fechaEvento": "…", "observacion": "…", "recibidoEn": "…" }
 ```
 

@@ -64,7 +64,7 @@ describe('Shipment (agregado guía)', () => {
   it('rechaza eventos de otro tenant o de otra guía (aislamiento)', () => {
     const shipment = newShipment();
     expect(captureError(() => shipment.apply(anEvent({ tenantId: TENANT_B }))).code).toBe('EVENTO_NO_PERTENECE_A_GUIA');
-    expect(captureError(() => shipment.apply(anEvent({ trackingNumber: TrackingNumber.create('OTRA') }))).code).toBe(
+    expect(captureError(() => shipment.apply(anEvent({ trackingNumber: TrackingNumber.create('10000099') }))).code).toBe(
       'EVENTO_NO_PERTENECE_A_GUIA',
     );
   });

@@ -40,7 +40,7 @@ curl -s -X PUT localhost:8080/v1/webhook -H 'X-Tenant-Id: banco-ficticio' \
   -H 'Content-Type: application/json' -d '{"url":"http://webhook-receiver:8080/hook"}'
 
 # 2) Registrar un evento → 201 (el envío al webhook ocurre en segundo plano)
-curl -s -X POST localhost:8080/v1/guias/GUIA-0001/eventos -H 'X-Tenant-Id: banco-ficticio' \
+curl -s -X POST localhost:8080/v1/guias/10000001/eventos -H 'X-Tenant-Id: banco-ficticio' \
   -H 'Content-Type: application/json' \
   -d '{"eventId":"3f6b2c1e-8a4d-4f7e-9b1a-2c3d4e5f6a7b","estado":"EN_RUTA","fechaEvento":"2026-11-18T10:15:00-05:00","observacion":"Salió del CD"}'
 
@@ -48,7 +48,7 @@ curl -s -X POST localhost:8080/v1/guias/GUIA-0001/eventos -H 'X-Tenant-Id: banco
 docker compose logs webhook-receiver
 
 # 4) Historial y notificaciones
-curl -s localhost:8080/v1/guias/GUIA-0001 -H 'X-Tenant-Id: banco-ficticio'
+curl -s localhost:8080/v1/guias/10000001 -H 'X-Tenant-Id: banco-ficticio'
 curl -s localhost:8080/v1/notificaciones -H 'X-Tenant-Id: banco-ficticio'
 
 # 5) Simular un cliente caído para ver los reintentos (5 intentos, espera creciente → FALLIDA)
@@ -77,7 +77,7 @@ npm run start:dev
 | `npm run test:smoke` | **E2E post-despliegue** contra el stack levantado con `docker compose up` | Stack en ejecución |
 | `npm run test:cov` | Todas, con cobertura (umbral ≥ 90 % en `src/domain`) | PostgreSQL |
 
-**Estado actual:** 218 pruebas en verde y smoke post-despliegue 12/12 contra el servicio compilado. Una auditoría QA independiente (agente `qa-verifier`) encontró 7 defectos de severidad media y baja; todos están corregidos y tienen prueba de regresión.
+**Estado actual:** 220 pruebas en verde y smoke post-despliegue 12/12 contra el servicio compilado. Una auditoría QA independiente (agente `qa-verifier`) encontró 7 defectos de severidad media y baja; todos están corregidos y tienen prueba de regresión.
 
 ### Qué se prueba y por qué
 

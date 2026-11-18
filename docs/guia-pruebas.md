@@ -41,9 +41,11 @@ Los puertos **8080**, **5433** y **9090** deben estar libres.
 |---|---|
 | Tenant principal | `banco-demo` |
 | Tenant para probar aislamiento | `retail-demo` |
-| Guía del flujo feliz | `GUIA-DEMO-001` |
-| Guía para reintentos (cliente caído) | `GUIA-DEMO-002` |
-| Guía para timeout (cliente lento) | `GUIA-DEMO-003` |
+| Guía del flujo feliz | `20000001` |
+| Guía para reintentos (cliente caído) | `20000002` |
+| Guía para timeout (cliente lento) | `20000003` |
+
+Los números de guía siguen el formato del ejemplo público de rastreo de Domina (`12345678`, 8 dígitos). Son ficticios. El servicio los trata como texto, no como número, para conservar los ceros a la izquierda.
 
 | Archivo | Contenido | Se usa en |
 |---|---|---|
@@ -57,8 +59,8 @@ Los puertos **8080**, **5433** y **9090** deben estar libres.
 | `07-evento-invalido.json` | UUID, estado y fecha inválidos + campo extra | Paso 13 |
 | `08-evento-fecha-futura.json` | `fechaEvento` en 2099 | Paso 14 |
 | `10-webhook-ssrf.json` | URL `ftp://169.254.169.254/...` | Paso 17 |
-| `09-evento-guia-con-falla.json` | Evento de `GUIA-DEMO-002` | Paso 18 |
-| `11-evento-guia-lenta.json` | Evento de `GUIA-DEMO-003` | Paso 20 |
+| `09-evento-guia-con-falla.json` | Evento de `20000002` | Paso 18 |
+| `11-evento-guia-lenta.json` | Evento de `20000003` | Paso 20 |
 | `receptor-simular-caida.json` | El webhook responde 503 las próximas 5 veces | Paso 18 |
 | `receptor-simular-lentitud.json` | El webhook tarda 7 s en responder | Paso 20 |
 | `receptor-normal.json` | El webhook vuelve a responder 200 de inmediato | Pasos 19 y 20 |
@@ -133,7 +135,7 @@ Invoke-RestMethod -Method Post -Uri "$R/_config" -Body (@{ secret = $hook.secret
 ### Paso 5: registrar un evento (RF1 y RF4)
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/02-evento-creada.json"
+curl.exe -s -w "`nHTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/02-evento-creada.json"
 ```
 
 ✅ **HTTP 201** en milisegundos, con `estadoActualGuia: "CREADA"`. `fechaEvento` se normaliza a UTC (`2026-11-17T13:00:00.000Z`).
@@ -143,7 +145,7 @@ curl.exe -s -w "`nHTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/GU
 ### Paso 6: idempotencia, enviar el MISMO evento otra vez (RF1)
 
 ```powershell
-curl.exe -s -i -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/02-evento-creada.json" | Select-String "^HTTP|Idempotent"
+curl.exe -s -i -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/02-evento-creada.json" | Select-String "^HTTP|Idempotent"
 ```
 
 ✅ `HTTP/1.1 200 OK` y `Idempotent-Replayed: true`. No se duplica ni el evento ni la notificación.
@@ -151,7 +153,7 @@ curl.exe -s -i -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" 
 ### Paso 7: la notificación llegó al cliente, firmada y una sola vez (RF4)
 
 ```powershell
-curl.exe -s -o NUL -w "HTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/03-evento-en-ruta.json"
+curl.exe -s -o NUL -w "HTTP %{http_code}`n" -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/03-evento-en-ruta.json"
 Invoke-RestMethod "$R/_received" | Select-Object webhookId, attempt, signatureValid, respondedWith | Format-Table
 ```
 
@@ -170,7 +172,7 @@ curl.exe -s "$B/v1/notificaciones" -H "X-Tenant-Id: $T"
 ### Paso 9: cerrar la guía con ENTREGADA
 
 ```powershell
-curl.exe -s -o NUL -w "HTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/04-evento-entregada.json"
+curl.exe -s -o NUL -w "HTTP %{http_code}`n" -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/04-evento-entregada.json"
 ```
 
 ✅ **HTTP 201**
@@ -178,7 +180,7 @@ curl.exe -s -o NUL -w "HTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/e
 ### Paso 10: una guía ENTREGADA ya no cambia de estado (RF1, regla terminal)
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/05-evento-despues-de-entregada.json"
+curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/05-evento-despues-de-entregada.json"
 ```
 
 ✅ **HTTP 409** con `code: "GUIA_EN_ESTADO_TERMINAL"`, en formato RFC 9457 (`type`, `title`, `status`, `detail`, `instance`, `requestId`).
@@ -186,7 +188,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/evento
 ### Paso 11: historial y estado actual (RF2)
 
 ```powershell
-curl.exe -s "$B/v1/guias/GUIA-DEMO-001" -H "X-Tenant-Id: $T"
+curl.exe -s "$B/v1/guias/20000001" -H "X-Tenant-Id: $T"
 ```
 
 ✅ `estadoActual: "ENTREGADA"` y `eventos` en **orden cronológico**: CREADA (13:00Z), EN_RUTA (15:30Z) y ENTREGADA (20:45Z).
@@ -194,7 +196,7 @@ curl.exe -s "$B/v1/guias/GUIA-DEMO-001" -H "X-Tenant-Id: $T"
 ### Paso 12: mismo eventId con distinto contenido (RF1)
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/06-evento-conflicto.json"
+curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/20000001/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/06-evento-conflicto.json"
 ```
 
 ✅ **HTTP 409** con `code: "EVENT_ID_CONFLICTO"`.
@@ -202,7 +204,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-001/evento
 ### Paso 13: validación de entradas (formato de error único)
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/07-evento-invalido.json"
+curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/20000002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/07-evento-invalido.json"
 ```
 
 ✅ **HTTP 400** con `code: "VALIDACION_FALLIDA"` y un arreglo `errors` que lista **cada** campo inválido: `eventId`, `estado`, `fechaEvento` y el campo desconocido.
@@ -210,7 +212,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-002/evento
 ### Paso 14: fecha en el futuro
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/08-evento-fecha-futura.json"
+curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/20000002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/08-evento-fecha-futura.json"
 ```
 
 ✅ **HTTP 400** con `code: "FECHA_EVENTO_FUTURA"` (tolerancia de 5 minutos).
@@ -218,7 +220,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" -X POST "$B/v1/guias/GUIA-DEMO-002/evento
 ### Paso 15: falta la cabecera de tenant
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/guias/GUIA-DEMO-001"
+curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/guias/20000001"
 ```
 
 ✅ **HTTP 400** con `code: "TENANT_INVALIDO"`.
@@ -226,7 +228,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/guias/GUIA-DEMO-001"
 ### Paso 16: un tenant nunca ve guías de otro tenant (RF2, aislamiento)
 
 ```powershell
-curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/guias/GUIA-DEMO-001" -H "X-Tenant-Id: retail-demo"
+curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/guias/20000001" -H "X-Tenant-Id: retail-demo"
 curl.exe -s "$B/v1/notificaciones" -H "X-Tenant-Id: retail-demo"
 curl.exe -s -w "`nHTTP %{http_code}`n" "$B/v1/webhook" -H "X-Tenant-Id: retail-demo"
 ```
@@ -251,7 +253,7 @@ curl.exe -s -w "`nHTTP %{http_code}`n" -X PUT "$B/v1/webhook" -H "X-Tenant-Id: $
 
 ```powershell
 curl.exe -s -X POST "$R/_config" -H $J --data-binary "@docs/pruebas/receptor-simular-caida.json"
-curl.exe -s -o NUL -w "HTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/GUIA-DEMO-002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/09-evento-guia-con-falla.json"
+curl.exe -s -o NUL -w "HTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/20000002/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/09-evento-guia-con-falla.json"
 ```
 
 ✅ El POST responde **201 en milisegundos**: el envío no bloquea la respuesta.
@@ -284,7 +286,7 @@ Ejecute otra vez el `reintentar`: ✅ **HTTP 409** con `NOTIFICACION_NO_REINTENT
 
 ```powershell
 curl.exe -s -X POST "$R/_config" -H $J --data-binary "@docs/pruebas/receptor-simular-lentitud.json"
-curl.exe -s -o NUL -w "HTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/GUIA-DEMO-003/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/11-evento-guia-lenta.json"
+curl.exe -s -o NUL -w "HTTP %{http_code} en %{time_total}s`n" -X POST "$B/v1/guias/20000003/eventos" -H "X-Tenant-Id: $T" -H $J --data-binary "@docs/pruebas/11-evento-guia-lenta.json"
 Start-Sleep -Seconds 7
 curl.exe -s -X POST "$R/_config" -H $J --data-binary "@docs/pruebas/receptor-normal.json"
 Start-Sleep -Seconds 15
@@ -333,13 +335,13 @@ curl.exe -s "$B/metrics" | Select-String "^webhook_deliveries_total|^tracking_ev
 
 | Qué | Comando | Resultado verificado |
 |---|---|---|
-| **Todas las pruebas dentro de Docker** (unitarias + arquitectura + integración + E2E contra PostgreSQL real) | `docker compose --profile test run --rm --build tests` | 15 suites, **218 pruebas OK** |
+| **Todas las pruebas dentro de Docker** (unitarias + arquitectura + integración + E2E contra PostgreSQL real) | `docker compose --profile test run --rm --build tests` | 15 suites, **220 pruebas OK** |
 | **Smoke / E2E post-despliegue** contra el stack levantado (12 escenarios, incluido el de reintentos con los tiempos reales) | `npm run test:smoke` *(requiere Node; antes, `npm ci` una vez)* | **SMOKE OK (12 pasos)** |
-| Todas las pruebas sin Docker | `npm test` *(requiere `DATABASE_URL_TEST` hacia un PostgreSQL; ver `.env.example`)* | 218 OK |
+| Todas las pruebas sin Docker | `npm test` *(requiere `DATABASE_URL_TEST` hacia un PostgreSQL; ver `.env.example`)* | 220 OK |
 | Solo unitarias y de arquitectura (sin BD) | `npm run test:unit` | OK |
 | Cobertura | `npm run test:cov` | ~95 % global, ~100 % en dominio y aplicación |
 
-El pipeline de GitHub Actions (`.github/workflows/ci.yml`) corre lo mismo en cada push: lint, tipos, auditoría, las 218 pruebas, `docker compose up` y el smoke.
+El pipeline de GitHub Actions (`.github/workflows/ci.yml`) corre lo mismo en cada push: lint, tipos, auditoría, las 220 pruebas, `docker compose up` y el smoke.
 
 ---
 

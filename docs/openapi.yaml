@@ -69,8 +69,8 @@ paths:
                 type: https://tracking-notifier.domina.dev/problemas/guia-en-estado-terminal
                 title: Conflicto con el estado del recurso
                 status: 409
-                detail: La guía GUIA-0001 está ENTREGADA y no admite más cambios de estado
-                instance: /v1/guias/GUIA-0001/eventos
+                detail: La guía 10000001 está ENTREGADA y no admite más cambios de estado
+                instance: /v1/guias/10000001/eventos
                 code: GUIA_EN_ESTADO_TERMINAL
                 requestId: 0b6f0c7e-2a0c-4f7a-9a51-6a2b9c0d1e2f
         '413': { $ref: '#/components/responses/Problem' }
@@ -260,7 +260,7 @@ components:
       name: numeroGuia
       in: path
       required: true
-      schema: { type: string, pattern: '^[A-Za-z0-9-]{1,40}$', example: GUIA-0001 }
+      schema: { type: string, pattern: '^[A-Za-z0-9-]{1,40}$', example: '10000001' }
     NotificacionId:
       name: id
       in: path
@@ -286,7 +286,7 @@ components:
             title: Petición inválida
             status: 400
             detail: La petición no es válida
-            instance: /v1/guias/GUIA-0001/eventos
+            instance: /v1/guias/10000001/eventos
             code: VALIDACION_FALLIDA
             errors:
               - { path: fechaEvento, message: 'fechaEvento debe ser ISO 8601 con zona horaria (ej. 2026-11-18T10:00:00-05:00)' }

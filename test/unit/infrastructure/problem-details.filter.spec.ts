@@ -27,7 +27,7 @@ describe('ProblemDetailsFilter (RFC 9457)', () => {
         return this;
       },
     };
-    const request = { originalUrl: '/v1/guias/G-1/eventos?x=1', url: '/v1/guias/G-1/eventos', id: 'req-12345678' };
+    const request = { originalUrl: '/v1/guias/10000001/eventos?x=1', url: '/v1/guias/10000001/eventos', id: 'req-12345678' };
     const host = { switchToHttp: () => ({ getRequest: () => request, getResponse: () => response }) } as unknown as ArgumentsHost;
     filter.catch(exception, host);
     return response;
@@ -39,7 +39,7 @@ describe('ProblemDetailsFilter (RFC 9457)', () => {
     const res = run(new Error('connection refused at 10.0.0.5:5432 password=xyz'));
     expect(res.statusCode).toBe(500);
     expect(res.contentType).toBe('application/problem+json');
-    expect(res.body).toMatchObject({ status: 500, code: 'ERROR_INTERNO', requestId: 'req-12345678', instance: '/v1/guias/G-1/eventos' });
+    expect(res.body).toMatchObject({ status: 500, code: 'ERROR_INTERNO', requestId: 'req-12345678', instance: '/v1/guias/10000001/eventos' });
     expect(JSON.stringify(res.body)).not.toMatch(/10\.0\.0\.5|password|stack/);
     expect(logged).toHaveLength(1);
   });

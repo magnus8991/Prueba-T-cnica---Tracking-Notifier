@@ -80,12 +80,12 @@ await step('RF3: configurar webhook → 201 con secreto', async () => {
 
 const created = event('CREADA', hoursAgo(10));
 await step('RF1: registrar evento → 201', async () => {
-  const res = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: created });
+  const res = await call('POST', '/v1/guias/90000001/eventos', { body: created });
   assert(res.status === 201, `status ${res.status}: ${JSON.stringify(res.body)}`);
 });
 
 await step('RF1: mismo eventId → 200 idempotente', async () => {
-  const res = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: created });
+  const res = await call('POST', '/v1/guias/90000001/eventos', { body: created });
   assert(res.status === 200 && res.headers.get('idempotent-replayed') === 'true', `status ${res.status}`);
 });
 
@@ -102,27 +102,27 @@ await step('RF4: webhook recibido con firma HMAC válida y notificación ENVIADA
 });
 
 await step('RF1: ENTREGADA → 201 y luego EN_RUTA → 409 (estado terminal)', async () => {
-  const delivered = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('ENTREGADA', hoursAgo(3)) });
+  const delivered = await call('POST', '/v1/guias/90000001/eventos', { body: event('ENTREGADA', hoursAgo(3)) });
   assert(delivered.status === 201, `ENTREGADA status ${delivered.status}`);
-  const after = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('EN_RUTA', hoursAgo(2)) });
+  const after = await call('POST', '/v1/guias/90000001/eventos', { body: event('EN_RUTA', hoursAgo(2)) });
   assert(after.status === 409 && after.body.code === 'GUIA_EN_ESTADO_TERMINAL', `status ${after.status} ${after.body?.code}`);
   assert(after.headers.get('content-type')?.includes('application/problem+json'), 'el error no es problem+json');
 });
 
 await step('RF2: historial cronológico y estado actual', async () => {
-  const res = await call('GET', '/v1/guias/SMOKE-0001');
+  const res = await call('GET', '/v1/guias/90000001');
   assert(res.status === 200, `status ${res.status}`);
   assert(res.body.estadoActual === 'ENTREGADA', `estadoActual ${res.body.estadoActual}`);
   assert(res.body.eventos.map((e) => e.estado).join(',') === 'CREADA,ENTREGADA', `eventos ${res.body.eventos.map((e) => e.estado)}`);
 });
 
 await step('RF2: aislamiento por tenant (otro tenant → 404)', async () => {
-  const res = await call('GET', '/v1/guias/SMOKE-0001', { tenant: `${TENANT}-otro` });
+  const res = await call('GET', '/v1/guias/90000001', { tenant: `${TENANT}-otro` });
   assert(res.status === 404, `status ${res.status}`);
 });
 
 await step('Validación: cuerpo inválido → 400 problem+json', async () => {
-  const res = await call('POST', '/v1/guias/SMOKE-0002/eventos', { body: { eventId: 'x', estado: 'PERDIDA' } });
+  const res = await call('POST', '/v1/guias/90000002/eventos', { body: { eventId: 'x', estado: 'PERDIDA' } });
   assert(res.status === 400 && res.body.code === 'VALIDACION_FALLIDA' && res.body.errors.length >= 2, `status ${res.status}`);
 });
 
@@ -132,7 +132,7 @@ if (process.env.SMOKE_SKIP_RETRIES !== '1') {
     await waitFor('cola vacía', async () => (await notifications()).every((n) => n.estado === 'ENVIADA' || n.estado === 'FALLIDA'), 30_000);
     await fetch(`${RECEIVER_URL}/_config`, { method: 'POST', body: JSON.stringify({ failNext: 5, status: 503 }) });
     const failing = event('EN_RUTA', hoursAgo(9));
-    assert((await call('POST', '/v1/guias/SMOKE-0003/eventos', { body: failing })).status === 201, 'registro falló');
+    assert((await call('POST', '/v1/guias/90000003/eventos', { body: failing })).status === 201, 'registro falló');
 
     const failed = await waitFor(
       'notificación FALLIDA',
