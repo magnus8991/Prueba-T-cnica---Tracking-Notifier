@@ -104,6 +104,13 @@ class InMemoryNotifications implements NotificationRepository {
     this.state().notifications.set(n.id, n.snapshot());
   }
   async claimDue(now: Date, limit: number, leaseMs: number) {
+    for (const p of this.state().notifications.values()) {
+      const n = Notification.restore(p);
+      if (n.isAbandonedAfterLastAttempt(now)) {
+        n.abandon(now);
+        this.state().notifications.set(n.id, n.snapshot());
+      }
+    }
     const due = [...this.state().notifications.values()]
       .map((p) => Notification.restore(p))
       .filter((n) => n.isDue(now))

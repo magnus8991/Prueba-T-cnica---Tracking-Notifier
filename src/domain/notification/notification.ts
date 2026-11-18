@@ -81,8 +81,24 @@ export class Notification {
   /** ¿Puede un worker reclamarla ahora? Pendiente y vencida, o "enviando" con lease expirado (worker caído). */
   isDue(now: Date): boolean {
     if (this.props.status === 'PENDIENTE') return this.props.nextAttemptAt.getTime() <= now.getTime();
-    if (this.props.status === 'ENVIANDO') return (this.props.lockedUntil?.getTime() ?? 0) < now.getTime();
+    if (this.props.status === 'ENVIANDO') return this.leaseExpired(now) && this.props.attempts < this.props.maxAttempts;
     return false;
+  }
+
+  /** Lease vencido en el último intento permitido: no se hace un intento extra, se marca FALLIDA. */
+  isAbandonedAfterLastAttempt(now: Date): boolean {
+    return this.props.status === 'ENVIANDO' && this.leaseExpired(now) && this.props.attempts >= this.props.maxAttempts;
+  }
+
+  abandon(now: Date): void {
+    if (!this.isAbandonedAfterLastAttempt(now)) {
+      throw new DomainError('TRANSICION_NOTIFICACION_INVALIDA', 'Solo se abandona un último intento con lease vencido');
+    }
+    this.props = { ...this.props, status: 'FALLIDA', lockedUntil: null, lastError: 'LEASE_EXPIRADO', failedAt: now, updatedAt: now };
+  }
+
+  private leaseExpired(now: Date): boolean {
+    return (this.props.lockedUntil?.getTime() ?? 0) < now.getTime();
   }
 
   /** Un worker toma la notificación: el intento se cuenta al reclamar (acota reintentos ante caídas). */

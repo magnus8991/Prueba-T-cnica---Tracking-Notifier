@@ -33,6 +33,29 @@ describe('Notification (outbox + reintentos)', () => {
     expect(n.isDue(at(LEASE + 1))).toBe(true);
   });
 
+  it('si el worker cae en el último intento, no hace un intento extra: se abandona como FALLIDA', () => {
+    const n = newNotification();
+    let now = T0;
+    for (let i = 0; i < 4; i++) {
+      n.startAttempt(now, LEASE);
+      n.recordFailure(now, failure, policy);
+      now = n.snapshot().nextAttemptAt;
+    }
+    n.startAttempt(now, LEASE); // 5.º intento, el worker "muere"
+    const later = new Date(now.getTime() + LEASE + 1);
+
+    expect(n.isDue(later)).toBe(false);
+    expect(n.isAbandonedAfterLastAttempt(later)).toBe(true);
+    n.abandon(later);
+    expect(n.snapshot()).toMatchObject({ status: 'FALLIDA', lastError: 'LEASE_EXPIRADO', attempts: 5 });
+  });
+
+  it('no se puede abandonar una notificación con intentos disponibles', () => {
+    const n = newNotification();
+    n.startAttempt(T0, LEASE);
+    expect(captureError(() => n.abandon(at(LEASE + 1))).code).toBe('TRANSICION_NOTIFICACION_INVALIDA');
+  });
+
   it('2xx la marca ENVIADA', () => {
     const n = newNotification();
     n.startAttempt(T0, LEASE);
