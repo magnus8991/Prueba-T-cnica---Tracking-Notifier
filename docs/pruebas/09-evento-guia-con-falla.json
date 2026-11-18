@@ -1,0 +1,6 @@
+{
+  "eventId": "a1b2c3d4-0002-4000-8000-000000000001",
+  "estado": "EN_RUTA",
+  "fechaEvento": "2026-11-17T09:00:00-05:00",
+  "observacion": "Evento para probar reintentos con el cliente caído"
+}

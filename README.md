@@ -6,6 +6,7 @@ Microservicio que **recibe cambios de estado de guías de envío**, los **guarda
 
 | Documento | Contenido |
 |---|---|
+| [docs/guia-pruebas.md](docs/guia-pruebas.md) | **Guía de pruebas paso a paso** con datos de prueba (`docs/pruebas/`) y resultados esperados |
 | [docs/adr-001.md](docs/adr-001.md) | **ADR:** Transactional Outbox + `SKIP LOCKED` (la decisión más importante) |
 | [docs/openapi.yaml](docs/openapi.yaml) | Contrato OpenAPI 3.1, también servido en `GET /docs` |
 | [docs/informe-implementacion.md](docs/informe-implementacion.md) | Informe de implementación: análisis, esquema de BD, contratos, seguridad y estrategia de pruebas |

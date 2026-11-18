@@ -1,0 +1,6 @@
+{
+  "eventId": "a1b2c3d4-0001-4000-8000-000000000001",
+  "estado": "EN_RUTA",
+  "fechaEvento": "2026-11-17T08:00:00-05:00",
+  "observacion": "Mismo eventId que 02-evento-creada.json pero con OTRO contenido"
+}
