@@ -60,6 +60,8 @@ function assert(condition, message) {
 }
 
 const event = (estado, fechaEvento, eventId = randomUUID()) => ({ eventId, estado, fechaEvento, observacion: 'Dato ficticio smoke' });
+// Fechas relativas al reloj real (el servicio rechaza fechaEvento en el futuro).
+const hoursAgo = (h) => new Date(Date.now() - h * 3_600_000).toISOString();
 const notifications = async (query = '') => (await call('GET', `/v1/notificaciones${query}`)).body.items;
 
 await step('Servicio listo (/health/ready)', () =>
@@ -76,7 +78,7 @@ await step('RF3: configurar webhook → 201 con secreto', async () => {
   await fetch(`${RECEIVER_URL}/_config`, { method: 'POST', body: JSON.stringify({ secret, failNext: 0, delayMs: 0 }) });
 });
 
-const created = event('CREADA', '2026-11-18T08:00:00-05:00');
+const created = event('CREADA', hoursAgo(10));
 await step('RF1: registrar evento → 201', async () => {
   const res = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: created });
   assert(res.status === 201, `status ${res.status}: ${JSON.stringify(res.body)}`);
@@ -100,9 +102,9 @@ await step('RF4: webhook recibido con firma HMAC válida y notificación ENVIADA
 });
 
 await step('RF1: ENTREGADA → 201 y luego EN_RUTA → 409 (estado terminal)', async () => {
-  const delivered = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('ENTREGADA', '2026-11-18T15:00:00-05:00') });
+  const delivered = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('ENTREGADA', hoursAgo(3)) });
   assert(delivered.status === 201, `ENTREGADA status ${delivered.status}`);
-  const after = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('EN_RUTA', '2026-11-18T16:00:00-05:00') });
+  const after = await call('POST', '/v1/guias/SMOKE-0001/eventos', { body: event('EN_RUTA', hoursAgo(2)) });
   assert(after.status === 409 && after.body.code === 'GUIA_EN_ESTADO_TERMINAL', `status ${after.status} ${after.body?.code}`);
   assert(after.headers.get('content-type')?.includes('application/problem+json'), 'el error no es problem+json');
 });
@@ -126,8 +128,10 @@ await step('Validación: cuerpo inválido → 400 problem+json', async () => {
 
 if (process.env.SMOKE_SKIP_RETRIES !== '1') {
   await step('RF4: webhook caído → 5 intentos → FALLIDA → reintento manual → ENVIADA', async () => {
+    // Esperar a que no queden entregas en curso: si no, una entrega previa consumiría una de las fallas simuladas.
+    await waitFor('cola vacía', async () => (await notifications()).every((n) => n.estado === 'ENVIADA' || n.estado === 'FALLIDA'), 30_000);
     await fetch(`${RECEIVER_URL}/_config`, { method: 'POST', body: JSON.stringify({ failNext: 5, status: 503 }) });
-    const failing = event('EN_RUTA', '2026-11-18T09:00:00-05:00');
+    const failing = event('EN_RUTA', hoursAgo(9));
     assert((await call('POST', '/v1/guias/SMOKE-0003/eventos', { body: failing })).status === 201, 'registro falló');
 
     const failed = await waitFor(
