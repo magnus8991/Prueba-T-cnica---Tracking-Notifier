@@ -276,9 +276,12 @@ describe('tracking-notifier E2E', () => {
       expect(webhook.received).toHaveLength(5);
       expect(webhook.received.map((r) => r.headers['x-delivery-attempt'])).toEqual(['1', '2', '3', '4', '5']);
 
-      // Espera creciente entre intentos
+      // Espera creciente entre intentos. La monotonía exacta se prueba de forma determinista en
+      // retry-policy.spec.ts; aquí (reloj real, base 40 ms) se verifica de forma robusta al ruido de polling:
       const gaps = webhook.received.slice(1).map((r, i) => r.receivedAt - webhook.received[i]!.receivedAt);
-      for (let i = 1; i < gaps.length; i++) expect(gaps[i]!).toBeGreaterThanOrEqual(gaps[i - 1]! - 15);
+      const minimumBackoff = 20 + 40 + 80 + 160; // mitad del techo exponencial de cada espera (equal jitter)
+      expect(gaps.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(minimumBackoff - 10);
+      expect(gaps[3]!).toBeGreaterThan(gaps[0]!);
 
       const detail = await api().get(`/v1/notificaciones/${failed!.id}`).set('X-Tenant-Id', TENANT).expect(200);
       expect(detail.body.historialIntentos).toHaveLength(5);
